@@ -156,21 +156,23 @@ export default function CalendarView() {
 
   // ── Change Room state ───────────────────────────────────────────────────────
   const [changeRoomBooking, setChangeRoomBooking] = useState<Booking | null>(null);
+  const [changeRoomFromRoomId, setChangeRoomFromRoomId] = useState<number | null>(null);
   const [changeRoomDialogOpen, setChangeRoomDialogOpen] = useState(false);
   const [changeRoomNewRoomId, setChangeRoomNewRoomId] = useState<string>("");
   const [changeRoomRecalculate, setChangeRoomRecalculate] = useState(true);
   const [otaPromptOpen, setOtaPromptOpen] = useState(false);
-  const [pendingRoomChange, setPendingRoomChange] = useState<{ bookingId: number; newRoomId: number; recalculatePrice: boolean } | null>(null);
+  const [pendingRoomChange, setPendingRoomChange] = useState<{ bookingId: number; newRoomId: number; fromRoomId?: number; recalculatePrice: boolean } | null>(null);
 
   const changeRoomMutation = useMutation({
-    mutationFn: async ({ bookingId, newRoomId, openOldRoomOnOTA, recalculatePrice }: { bookingId: number; newRoomId: number; openOldRoomOnOTA: boolean; recalculatePrice: boolean }) =>
-      apiRequest(`/api/bookings/${bookingId}/change-room`, "POST", { newRoomId, openOldRoomOnOTA, recalculatePrice }),
+    mutationFn: async ({ bookingId, newRoomId, openOldRoomOnOTA, recalculatePrice, fromRoomId }: { bookingId: number; newRoomId: number; openOldRoomOnOTA: boolean; recalculatePrice: boolean; fromRoomId?: number }) =>
+      apiRequest(`/api/bookings/${bookingId}/change-room`, "POST", { newRoomId, openOldRoomOnOTA, recalculatePrice, fromRoomId }),
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
       setOtaPromptOpen(false);
       setPendingRoomChange(null);
       setChangeRoomBooking(null);
+      setChangeRoomFromRoomId(null);
       setChangeRoomDialogOpen(false);
       setDormitoryPopup(prev => ({ ...prev, isOpen: false }));
       const priceNote = data?.newTotal ? ` Total updated to ₹${Number(data.newTotal).toLocaleString()}.` : "";
@@ -210,8 +212,12 @@ export default function CalendarView() {
   const getAvailableRoomsForChange = (booking: Booking): Room[] => {
     const cin = format(new Date(booking.checkInDate), "yyyy-MM-dd");
     const cout = format(new Date(booking.checkOutDate), "yyyy-MM-dd");
+    // For multi-room bookings: exclude the SPECIFIC room being swapped (changeRoomFromRoomId),
+    // not necessarily the booking's primary roomId. This ensures Room 1 shows up when the
+    // user is changing Room 6 (a secondary room) of a booking whose primary room is Room 2.
+    const excludeRoomId = changeRoomFromRoomId ?? booking.roomId;
     return rooms.filter(room => {
-      if (room.id === booking.roomId) return false;
+      if (room.id === excludeRoomId) return false;
       if (room.propertyId !== booking.propertyId) return false;
       if (room.status === "out-of-service" || room.status === "maintenance") return false;
       const hasConflict = bookings.some(b => {
@@ -1623,7 +1629,7 @@ export default function CalendarView() {
                         {booking.status !== "checked-out" && booking.status !== "cancelled" && (
                           <Button
                             size="sm" className="flex-1 bg-[#1E3A5F] hover:bg-[#162d4a] text-white"
-                            onClick={() => { setChangeRoomBooking(booking); setChangeRoomNewRoomId(""); setChangeRoomDialogOpen(true); }}
+                            onClick={() => { setChangeRoomBooking(booking); setChangeRoomFromRoomId(dormitoryPopup.room?.id ?? booking.roomId ?? null); setChangeRoomNewRoomId(""); setChangeRoomDialogOpen(true); }}
                             data-testid={`button-change-room-${booking.id}`}
                           >
                             <ArrowRightLeft className="h-3.5 w-3.5 mr-1.5" />Change Room
@@ -1668,7 +1674,7 @@ export default function CalendarView() {
       </Dialog>
 
       {/* ── Change Room: Room Picker Dialog ──────────────────────────────── */}
-      <Dialog open={changeRoomDialogOpen} onOpenChange={(open) => { if (!open) { setChangeRoomDialogOpen(false); setChangeRoomBooking(null); setChangeRoomNewRoomId(""); } }}>
+      <Dialog open={changeRoomDialogOpen} onOpenChange={(open) => { if (!open) { setChangeRoomDialogOpen(false); setChangeRoomBooking(null); setChangeRoomFromRoomId(null); setChangeRoomNewRoomId(""); } }}>
         <DialogContent className="sm:max-w-md" data-testid="dialog-change-room">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1678,7 +1684,7 @@ export default function CalendarView() {
             <DialogDescription>
               {changeRoomBooking && (() => {
                 const guest = guests.find(g => g.id === changeRoomBooking.guestId);
-                const currentRoom = rooms.find(r => r.id === changeRoomBooking.roomId);
+                const currentRoom = rooms.find(r => r.id === (changeRoomFromRoomId ?? changeRoomBooking.roomId));
                 return `Moving ${guest?.fullName || "Guest"} from Room ${currentRoom?.roomNumber || "—"} · ${format(new Date(changeRoomBooking.checkInDate), "d MMM")} – ${format(new Date(changeRoomBooking.checkOutDate), "d MMM yyyy")}`;
               })()}
             </DialogDescription>
@@ -1722,7 +1728,7 @@ export default function CalendarView() {
 
             {changeRoomNewRoomId && changeRoomBooking && (() => {
               const newRoom = rooms.find(r => r.id === parseInt(changeRoomNewRoomId));
-              const oldRoom = rooms.find(r => r.id === changeRoomBooking.roomId);
+              const oldRoom = rooms.find(r => r.id === (changeRoomFromRoomId ?? changeRoomBooking.roomId));
               const nights = Math.max(1, Math.round(
                 (new Date(changeRoomBooking.checkOutDate).getTime() - new Date(changeRoomBooking.checkInDate).getTime())
                 / (1000 * 60 * 60 * 24)
@@ -1790,7 +1796,7 @@ export default function CalendarView() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setChangeRoomDialogOpen(false); setChangeRoomBooking(null); setChangeRoomNewRoomId(""); }} data-testid="button-cancel-change-room">
+            <Button variant="outline" onClick={() => { setChangeRoomDialogOpen(false); setChangeRoomBooking(null); setChangeRoomFromRoomId(null); setChangeRoomNewRoomId(""); }} data-testid="button-cancel-change-room">
               Cancel
             </Button>
             <Button
@@ -1798,7 +1804,7 @@ export default function CalendarView() {
               className="bg-[#1E3A5F] hover:bg-[#162d4a] text-white"
               onClick={() => {
                 if (!changeRoomBooking || !changeRoomNewRoomId) return;
-                setPendingRoomChange({ bookingId: changeRoomBooking.id, newRoomId: parseInt(changeRoomNewRoomId), recalculatePrice: changeRoomRecalculate });
+                setPendingRoomChange({ bookingId: changeRoomBooking.id, newRoomId: parseInt(changeRoomNewRoomId), fromRoomId: changeRoomFromRoomId ?? undefined, recalculatePrice: changeRoomRecalculate });
                 setChangeRoomDialogOpen(false);
                 setOtaPromptOpen(true);
               }}

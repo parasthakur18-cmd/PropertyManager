@@ -4716,15 +4716,19 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   app.post("/api/bookings/:id/change-room", isAuthenticated, async (req: any, res) => {
     try {
       const bookingId = parseInt(req.params.id);
-      const { newRoomId, openOldRoomOnOTA, recalculatePrice } = req.body;
+      const { newRoomId, openOldRoomOnOTA, recalculatePrice, fromRoomId: rawFromRoomId } = req.body;
       const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      // fromRoomId: which specific room slot is being changed (for multi-room bookings
+      // where booking.roomId is the primary room but user is swapping a secondary room)
+      const fromRoomId: number | undefined = rawFromRoomId ? Number(rawFromRoomId) : undefined;
 
       if (!newRoomId) return res.status(400).json({ message: "newRoomId is required" });
 
       const booking = await storage.getBooking(bookingId);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
 
-      const oldRoomId = booking.roomId;
+      // Use fromRoomId if provided (secondary room swap), else fall back to booking's primary roomId
+      const oldRoomId = fromRoomId ?? booking.roomId;
       if (oldRoomId === newRoomId) return res.status(400).json({ message: "New room is the same as current room" });
 
       const newRoom = await storage.getRoom(newRoomId);
@@ -4755,24 +4759,30 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       // Optionally recalculate total based on new room's price × nights
       let newTotal: number | undefined;
+
+      // When the user swaps a secondary room (fromRoomId ≠ booking.roomId), the booking's
+      // primary roomId must NOT change — only roomIds array is updated. This prevents the
+      // primary room from being incorrectly overwritten when swapping a secondary room.
+      const isChangingPrimaryRoom = !fromRoomId || fromRoomId === booking.roomId;
       const bookingUpdates: Record<string, any> = {
-        roomId: newRoomId,
         propertyId: newRoom.propertyId,
       };
+      if (isChangingPrimaryRoom) {
+        bookingUpdates.roomId = newRoomId;
+      }
 
-      // GROUP BOOKING: also replace the old room ID inside the roomIds array.
-      // Without this, booking.roomId and booking.roomIds become permanently out of sync —
-      // the calendar shows phantom bars in the old room, and the active-bookings page
-      // shows incorrect room numbers.
-      if (booking.isGroupBooking && Array.isArray(booking.roomIds) && oldRoomId) {
+      // GROUP / MULTI-ROOM BOOKING: replace the old room ID inside the roomIds array.
+      // This handles both isGroupBooking=true and any booking that has a roomIds array.
+      if (Array.isArray(booking.roomIds) && booking.roomIds.length > 0 && oldRoomId) {
         if (booking.roomIds.includes(oldRoomId)) {
-          // Replace old room with new room in the array
           bookingUpdates.roomIds = booking.roomIds.map((id: number) => id === oldRoomId ? newRoomId : id);
         } else {
-          // Old roomId is not in roomIds (data was already inconsistent) — just append new room,
-          // removing any accidental duplicate of newRoomId first
+          // Old roomId not in array (data inconsistency) — append new room without duplicates
           bookingUpdates.roomIds = [...booking.roomIds.filter((id: number) => id !== newRoomId), newRoomId];
         }
+      } else if (booking.isGroupBooking && oldRoomId) {
+        // isGroupBooking but roomIds not set — initialise array
+        bookingUpdates.roomIds = [newRoomId];
       }
       if (recalculatePrice && newRoom.pricePerNight) {
         const nights = Math.max(1, Math.round(
