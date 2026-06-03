@@ -4572,6 +4572,15 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       const booking = await storage.updateBooking(parseInt(req.params.id), validatedData);
 
+      // AioSell inventory sync: fire when dates or room assignment change, because the
+      // old push is now stale (e.g. checkout shortened → a date that was 0-available becomes 1).
+      // Runs fire-and-forget so it never blocks the HTTP response.
+      const inventoryFields = ["checkInDate", "checkOutDate", "roomId", "roomIds", "bedsBooked"] as const;
+      const inventoryAffected = inventoryFields.some(f => (validatedData as any)[f] !== undefined);
+      if (inventoryAffected && booking?.propertyId) {
+        syncWithRetry(booking.propertyId, "BOOKING_UPDATED", { triggerBookingId: booking.id }).catch(() => {});
+      }
+
       // Wallet sync on booking edit — handle both amount increase and payment method change
       if ((validatedData.advanceAmount !== undefined || (validatedData as any).advancePaymentMethod !== undefined) && booking && booking.propertyId) {
         const newAdv = parseFloat(String(validatedData.advanceAmount ?? existingBooking.advanceAmount ?? "0"));
