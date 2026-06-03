@@ -524,6 +524,7 @@ export async function autoSyncInventoryForProperty(
       checkOutDate: bookings.checkOutDate,
       status: bookings.status,
       bedsBooked: bookings.bedsBooked,
+      source: bookings.source,
     }).from(bookings).where(
       and(
         eq(bookings.propertyId, propertyId),
@@ -534,6 +535,25 @@ export async function autoSyncInventoryForProperty(
         gte(bookings.checkOutDate, today),
       )
     );
+
+    // ── OTA double-count prevention ────────────────────────────────────────────
+    // AioSell's "Update Available Rooms" page displays: (what Hostezee pushes) − (its own OTA bookings).
+    // If we also count AioSell-sourced bookings in our push, those guests get deducted TWICE,
+    // making AioSell show 0 when Hostezee shows 1.
+    // Fix: only count non-OTA (direct/manual) bookings when computing how many rooms are occupied.
+    // AioSell handles its own OTA bookings itself.
+    const isAiosellSourced = (src: string | null | undefined) =>
+      typeof src === "string" && src.startsWith("aiosell-");
+
+    // Bookings that Hostezee should count (direct, walk-in, other channels NOT managed by AioSell)
+    const directBookings = activeBookings.filter(b => !isAiosellSourced(b.source));
+    // Booking IDs where TBS stays should be excluded from push count (AioSell tracks these itself)
+    const aiosellBookingIds = new Set(
+      activeBookings.filter(b => isAiosellSourced(b.source)).map(b => b.id)
+    );
+    if (aiosellBookingIds.size > 0) {
+      console.log(`[AIOSELL] OTA deduction fix: ${aiosellBookingIds.size} aiosell-sourced booking(s) excluded from push count (AioSell deducts these itself)`);
+    }
 
     // Also fetch TBS room stays (no assigned roomId) to correctly reduce inventory
     // These represent rooms that are sold but not yet physically assigned
@@ -650,7 +670,7 @@ export async function autoSyncInventoryForProperty(
           //   - Otherwise (single-bed manual booking with no stays), fall back to
           //     booking.roomId / roomIds with bedsBooked count.
           const bedsBookedByRoom: Record<number, number> = {};
-          for (const booking of activeBookings) {
+          for (const booking of directBookings) {
             const cin = new Date(booking.checkInDate);
             const cout = new Date(booking.checkOutDate);
             cin.setHours(0, 0, 0, 0);
@@ -696,7 +716,7 @@ export async function autoSyncInventoryForProperty(
           // Fallback: if a TBS booking has no stay rows at all (manual TBS), count
           // it as 1 bed against the pool using bedsBooked from the booking row.
           let tbsDormBeds = 0;
-          for (const booking of activeBookings) {
+          for (const booking of directBookings) {
             const cin = new Date(booking.checkInDate);
             const cout = new Date(booking.checkOutDate);
             cin.setHours(0, 0, 0, 0);
@@ -747,9 +767,11 @@ export async function autoSyncInventoryForProperty(
           dateAvailability[dateStr][mapping.aiosellRoomCode] = available;
         } else {
           // For regular rooms: push count of rooms NOT booked on this date
+          // Only count direct bookings — AioSell deducts its own OTA bookings on top of
+          // whatever we push, so counting them here causes double-deduction.
           const bookedRoomIds = new Set<number>();
           let tbsCount = 0;
-          for (const booking of activeBookings) {
+          for (const booking of directBookings) {
             const cin = new Date(booking.checkInDate);
             const cout = new Date(booking.checkOutDate);
             cin.setHours(0, 0, 0, 0);
