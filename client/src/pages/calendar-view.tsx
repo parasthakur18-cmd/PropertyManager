@@ -212,25 +212,23 @@ export default function CalendarView() {
   const getAvailableRoomsForChange = (booking: Booking): Room[] => {
     const cin = format(new Date(booking.checkInDate), "yyyy-MM-dd");
     const cout = format(new Date(booking.checkOutDate), "yyyy-MM-dd");
-    // The room currently being swapped — exclude it from results
+    // The specific room slot being swapped out — exclude it from results
     const excludeRoomId = changeRoomFromRoomId ?? booking.roomId;
-    // Other rooms in this same booking that are staying (i.e. roomIds array minus the one being moved).
-    // We use only booking.roomIds (the explicit multi-room array), NOT booking.roomId, because
-    // booking.roomId is a legacy primary-key field that can be stale and doesn't reliably reflect
-    // the current room assignment in multi-room bookings.
-    const otherBookingRoomIds = new Set<number>(
-      (booking.roomIds || []).filter((id): id is number => id != null && id !== excludeRoomId)
-    );
     return rooms.filter(room => {
       if (room.id === excludeRoomId) return false;
-      // Exclude rooms already occupied by other parts of the same booking
-      if (otherBookingRoomIds.has(room.id)) return false;
       if (room.propertyId !== booking.propertyId) return false;
       if (room.status === "out-of-service" || room.status === "maintenance") return false;
       const hasConflict = bookings.some(b => {
-        if (b.id === booking.id) return false;
         if (b.status === "cancelled" || b.status === "checked-out" || b.status === "no_show") return false;
-        // Check BOTH primary roomId AND the roomIds array (multi-room bookings)
+        // For the same booking being moved: rooms OTHER than the one being swapped are still occupied
+        if (b.id === booking.id) {
+          if (room.id === excludeRoomId) return false; // already filtered above
+          // Only block if this room is explicitly listed in booking.roomIds (confirmed multi-room)
+          // Do NOT use booking.roomId here — it can be a stale primary-key value
+          const otherRooms = (b.roomIds || []).filter((id): id is number => id != null && id !== excludeRoomId);
+          return otherRooms.includes(room.id);
+        }
+        // For other bookings: check BOTH primary roomId AND the roomIds array
         const bAllRoomIds = [b.roomId, ...(b.roomIds || [])].filter((id): id is number => id != null);
         if (!bAllRoomIds.includes(room.id)) return false;
         const bc = format(new Date(b.checkInDate), "yyyy-MM-dd");
