@@ -212,18 +212,24 @@ export default function CalendarView() {
   const getAvailableRoomsForChange = (booking: Booking): Room[] => {
     const cin = format(new Date(booking.checkInDate), "yyyy-MM-dd");
     const cout = format(new Date(booking.checkOutDate), "yyyy-MM-dd");
-    // For multi-room bookings: exclude the SPECIFIC room being swapped (changeRoomFromRoomId),
-    // not necessarily the booking's primary roomId. This ensures Room 1 shows up when the
-    // user is changing Room 6 (a secondary room) of a booking whose primary room is Room 2.
+    // The room currently being swapped — exclude it from results
     const excludeRoomId = changeRoomFromRoomId ?? booking.roomId;
+    // All rooms belonging to THIS booking (can't move to a room already in the same booking)
+    const ownRoomIds = new Set<number>(
+      [booking.roomId, ...(booking.roomIds || [])].filter((id): id is number => id != null)
+    );
     return rooms.filter(room => {
       if (room.id === excludeRoomId) return false;
+      // Exclude other rooms already occupied by this same booking
+      if (ownRoomIds.has(room.id)) return false;
       if (room.propertyId !== booking.propertyId) return false;
       if (room.status === "out-of-service" || room.status === "maintenance") return false;
       const hasConflict = bookings.some(b => {
         if (b.id === booking.id) return false;
         if (b.status === "cancelled" || b.status === "checked-out" || b.status === "no_show") return false;
-        if (b.roomId !== room.id) return false;
+        // Check BOTH primary roomId AND the roomIds array (multi-room bookings)
+        const bAllRoomIds = [b.roomId, ...(b.roomIds || [])].filter((id): id is number => id != null);
+        if (!bAllRoomIds.includes(room.id)) return false;
         const bc = format(new Date(b.checkInDate), "yyyy-MM-dd");
         const bo = format(new Date(b.checkOutDate), "yyyy-MM-dd");
         return bc < cout && bo > cin;
