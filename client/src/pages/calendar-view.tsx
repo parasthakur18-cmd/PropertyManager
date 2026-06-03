@@ -228,9 +228,12 @@ export default function CalendarView() {
           const otherRooms = (b.roomIds || []).filter((id): id is number => id != null && id !== excludeRoomId);
           return otherRooms.includes(room.id);
         }
-        // For other bookings: check BOTH primary roomId AND the roomIds array
-        const bAllRoomIds = [b.roomId, ...(b.roomIds || [])].filter((id): id is number => id != null);
-        if (!bAllRoomIds.includes(room.id)) return false;
+        // For other bookings: multi-room bookings use ONLY roomIds (roomId can be stale).
+        // Single-room bookings (no roomIds) fall back to roomId.
+        const bRoomIds = (b.roomIds && b.roomIds.length > 0)
+          ? b.roomIds.filter((id): id is number => id != null)
+          : [b.roomId].filter((id): id is number => id != null);
+        if (!bRoomIds.includes(room.id)) return false;
         const bc = format(new Date(b.checkInDate), "yyyy-MM-dd");
         const bo = format(new Date(b.checkOutDate), "yyyy-MM-dd");
         return bc < cout && bo > cin;

@@ -3083,9 +3083,13 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
         if (room.roomCategory === "dormitory") {
           const totalBeds = room.totalBeds || 6;
-          const roomBookings = overlappingBookings.filter(b => 
-            b.roomId === room.id || b.roomIds?.includes(room.id)
-          );
+          // For multi-room bookings (roomIds populated), use ONLY roomIds — the primary
+          // roomId field can be stale (points to a room not actually in the booking).
+          // For single-room bookings (no roomIds), fall back to roomId.
+          const roomBookings = overlappingBookings.filter(b => {
+            if (b.roomIds && b.roomIds.length > 0) return b.roomIds.includes(room.id);
+            return b.roomId === room.id;
+          });
           // Cap each booking's bed count at totalBeds (prevents a single mis-counted OTA
           // booking from blocking the entire dorm beyond its physical capacity).
           // Also cap the running total at totalBeds.
@@ -3115,9 +3119,13 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           };
         }
         
-        const conflictBooking = overlappingBookings.find(b => 
-          b.roomId === room.id || b.roomIds?.includes(room.id)
-        );
+        // For multi-room bookings (roomIds populated), use ONLY roomIds — the primary
+        // roomId field can be stale (points to a room not actually in the booking).
+        // For single-room bookings (no roomIds), fall back to roomId.
+        const conflictBooking = overlappingBookings.find(b => {
+          if (b.roomIds && b.roomIds.length > 0) return b.roomIds.includes(room.id);
+          return b.roomId === room.id;
+        });
         const hasOverlap = !!conflictBooking;
 
         const available = hasOverlap ? 0 : 1;
