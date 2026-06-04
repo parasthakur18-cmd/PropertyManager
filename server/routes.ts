@@ -3025,6 +3025,17 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
                 not(inArray(bookings.status, ["cancelled", "checked-out", "no_show"]))
               )
         );
+
+      // For dormitory bed counting we need ALL bookings (no property filter) matched by room ID.
+      // A booking may have a null or mismatched propertyId but correct roomId (e.g. OTA imports,
+      // pending walk-ins). The property-filtered set above misses these, so the dorm dropdown
+      // shows more free beds than actually exist. bed-inventory already uses this approach.
+      const allBookingsAllProperties = propertyId
+        ? await db
+            .select()
+            .from(bookings)
+            .where(not(inArray(bookings.status, ["cancelled", "checked-out", "no_show"])))
+        : allBookings; // no-op when no property filter was applied
       
       // Normalize any Date or ISO-string to a plain "YYYY-MM-DD" for timezone-safe comparison.
       // Booking dates are stored as date-only strings ("2026-05-01").
@@ -3040,6 +3051,15 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       // Filter overlapping bookings using date-string comparison (lexicographic = chronological for YYYY-MM-DD)
       // Overlap: bookingCheckOut > requestCheckIn AND bookingCheckIn < requestCheckOut
       let overlappingBookings = allBookings.filter(booking => {
+        if (!booking.checkInDate || !booking.checkOutDate) return false;
+        const bIn  = toDateStr(booking.checkInDate  as any);
+        const bOut = toDateStr(booking.checkOutDate as any);
+        if (!bIn || !bOut) return false;
+        return bOut > reqCheckInStr && bIn < reqCheckOutStr;
+      });
+
+      // Same date-overlap filter on the all-properties set — used for dormitory bed counting.
+      const overlappingBookingsAllProperties = allBookingsAllProperties.filter(booking => {
         if (!booking.checkInDate || !booking.checkOutDate) return false;
         const bIn  = toDateStr(booking.checkInDate  as any);
         const bOut = toDateStr(booking.checkOutDate as any);
@@ -3083,10 +3103,10 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
         if (room.roomCategory === "dormitory") {
           const totalBeds = room.totalBeds || 6;
-          // For multi-room bookings (roomIds populated), use ONLY roomIds — the primary
-          // roomId field can be stale (points to a room not actually in the booking).
-          // For single-room bookings (no roomIds), fall back to roomId.
-          const roomBookings = overlappingBookings.filter(b => {
+          // Use ALL-PROPERTIES overlapping bookings for dorm bed counting so that bookings
+          // with a null/mismatched propertyId (e.g. OTA imports, abandoned pending bookings)
+          // are still counted — matching by room ID alone is the correct isolation here.
+          const roomBookings = overlappingBookingsAllProperties.filter(b => {
             if (b.roomIds && b.roomIds.length > 0) return b.roomIds.includes(room.id);
             return b.roomId === room.id;
           });
