@@ -361,6 +361,7 @@ export default function Bookings() {
   const { data: roomAvailability, isFetching: isAvailabilityFetching } = useQuery({
     queryKey: ["/api/rooms/availability", checkInDate, checkOutDate, selectedPropertyId],
     enabled: !!(checkInDate && checkOutDate && checkInDate < checkOutDate),
+    staleTime: 0, // Always refetch — room availability changes whenever bookings are created/cancelled
     queryFn: async () => {
       const params = new URLSearchParams({
         checkIn: format(checkInDate, "yyyy-MM-dd"),
@@ -403,6 +404,7 @@ export default function Bookings() {
         conflictCheckOut?: string | null;
       }>>;
     },
+    staleTime: 0, // Always refetch — room availability changes whenever bookings are created/cancelled
   });
 
   // Check for extended stay conflicts (guest still in room past checkout)

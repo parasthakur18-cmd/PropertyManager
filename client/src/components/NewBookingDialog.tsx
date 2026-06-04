@@ -138,7 +138,7 @@ export function NewBookingDialog({ open, onOpenChange, defaultCheckIn, defaultCh
       if (!response.ok) throw new Error("Failed to fetch availability");
       return response.json() as Promise<number[]>;
     },
-    staleTime: 30 * 1000,
+    staleTime: 0, // Always refetch — room availability changes whenever bookings are created/cancelled
   });
 
   const selectedRoom = rooms?.find(r => r.id === selectedRoomId);
