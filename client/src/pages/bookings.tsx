@@ -1742,9 +1742,14 @@ export default function Bookings() {
                                 const remaining = avail?.remainingBeds ?? room.totalBeds ?? 6;
                                 const total = avail?.totalBeds ?? room.totalBeds ?? 6;
                                 const isFull = avail ? avail.remainingBeds === 0 : false;
+                                const baseLabel = `Room ${room.roomNumber} (Dormitory) - ₹${room.pricePerNight}/bed/night`;
                                 return (
-                                  <SelectItem key={room.id} value={room.id.toString()}>
-                                    Room {room.roomNumber} (Dormitory) - ₹{room.pricePerNight}/bed/night
+                                  <SelectItem
+                                    key={room.id}
+                                    value={room.id.toString()}
+                                    textValue={baseLabel}
+                                  >
+                                    {baseLabel}
                                     {checkInDate && checkOutDate ? (isFull ? " • Full" : ` • ${remaining}/${total} beds free`) : ""}
                                   </SelectItem>
                                 );
@@ -3464,9 +3469,10 @@ export default function Bookings() {
                                 const remaining = avail?.remainingBeds ?? room.totalBeds ?? 6;
                                 const total = avail?.totalBeds ?? room.totalBeds ?? 6;
                                 const isFull = avail && !isCurrentRoom ? avail.remainingBeds === 0 : false;
+                                const editBaseLabel = `${property?.name} - Room ${room.roomNumber} (Dormitory) - ₹${room.pricePerNight}/bed/night`;
                                 return (
-                                  <SelectItem key={room.id} value={room.id.toString()}>
-                                    {property?.name} - Room {room.roomNumber} (Dormitory) - ₹{room.pricePerNight}/bed/night
+                                  <SelectItem key={room.id} value={room.id.toString()} textValue={editBaseLabel + (isCurrentRoom ? " (Current)" : "")}>
+                                    {editBaseLabel}
                                     {isCurrentRoom ? " (Current)" : (editCheckInDate && editCheckOutDate ? (isFull ? " • Full" : ` • ${remaining}/${total} beds free`) : "")}
                                   </SelectItem>
                                 );

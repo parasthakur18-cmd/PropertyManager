@@ -376,7 +376,8 @@ export function NewBookingDialog({ open, onOpenChange, defaultCheckIn, defaultCh
                           const total = avail?.totalBeds ?? room.totalBeds ?? 6;
                           const isFull = avail ? avail.remainingBeds === 0 : false;
                           const bedsLabel = checkInDate && checkOutDate ? (isFull ? " • Full" : ` • ${remaining}/${total} beds free`) : "";
-                          return <SelectItem key={room.id} value={room.id.toString()}>{prop?.name} - Room {room.roomNumber} - ₹{room.pricePerNight}/bed/night{bedsLabel}</SelectItem>;
+                          const baseLabel = `${prop?.name} - Room ${room.roomNumber} - ₹${room.pricePerNight}/bed/night`;
+                          return <SelectItem key={room.id} value={room.id.toString()} textValue={baseLabel}>{baseLabel}{bedsLabel}</SelectItem>;
                         })}
                       </SelectContent>
                     </Select>
