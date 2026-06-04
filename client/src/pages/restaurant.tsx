@@ -282,6 +282,8 @@ export default function Kitchen() {
     }
   }, [pushStatus]);
 
+  const { data: properties } = useQuery<Property[]>({ queryKey: ["/api/properties"] });
+
   // Build a WhatsApp share message for an order
   const shareOrderOnWhatsApp = (order: any) => {
     const items = (order.items as any[]) || [];
@@ -294,8 +296,10 @@ export default function Kitchen() {
 
     const location = order.roomNumber ? `ROOM ${order.roomNumber}` : (order.customerName || "Restaurant");
     const paymentStatus = order.paymentStatus === "paid" ? "Paid" : "Unpaid";
+    const propName = order.propertyId ? (properties?.find((p: Property) => p.id === order.propertyId)?.name || "") : "";
 
     let msg =
+      (propName ? `📍 ${propName}\n` : "") +
       `Order for ${order.customerName || "Guest"}\n` +
       (order.customerPhone ? `Phone Number: ${order.customerPhone}\n` : "") +
       `${location}\n\n` +
@@ -706,6 +710,18 @@ export default function Kitchen() {
                     🧪 TEST ORDER
                   </Badge>
                 )}
+                {order.propertyId && (() => {
+                  const propName = properties?.find(p => p.id === order.propertyId)?.name;
+                  return propName ? (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] px-2 py-0 text-blue-700 border-blue-300 bg-blue-50 dark:text-blue-300 dark:border-blue-700 dark:bg-blue-950/40"
+                      data-testid={`badge-property-${order.id}`}
+                    >
+                      <Building2 className="h-2.5 w-2.5 mr-1" />{propName}
+                    </Badge>
+                  ) : null;
+                })()}
                 {isNewPending && (
                   <Badge
                     className="text-[10px] px-1.5 py-0 bg-red-500 text-white border-0 animate-pulse"
