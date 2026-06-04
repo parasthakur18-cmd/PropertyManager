@@ -4935,15 +4935,12 @@ function BillCorrectionForm({ bookingId, onClose }: { bookingId: number; onClose
 
   const correctionMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest(`/api/bills/${(bill as any).id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          totalAmount: correctedTotal,
-          balanceAmount: correctedBalance,
-          paymentStatus: correctedPaymentStatus,
-          paymentMethod: correctedPaymentStatus === "paid" ? correctedPaymentMethod : null,
-          pendingReason: correctionNote,
-        }),
+      const response = await apiRequest(`/api/bills/${(bill as any).id}`, "PATCH", {
+        totalAmount: correctedTotal,
+        balanceAmount: correctedBalance,
+        paymentStatus: correctedPaymentStatus,
+        paymentMethod: correctedPaymentStatus === "paid" ? correctedPaymentMethod : null,
+        pendingReason: correctionNote,
       });
       return response;
     },
