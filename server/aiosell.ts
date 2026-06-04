@@ -691,9 +691,11 @@ export async function autoSyncInventoryForProperty(
                 if (bRoomId && activeRoomIds.includes(bRoomId)) {
                   bedsBookedByRoom[bRoomId] = (bedsBookedByRoom[bRoomId] || 0) + beds;
                 }
+                // Count extra rooms from roomIds — skip bRoomId to avoid double-counting
+                // (bRoomId is already counted above; roomIds often contains the same room)
                 if (booking.roomIds) {
                   for (const rid of booking.roomIds) {
-                    if (activeRoomIds.includes(rid)) {
+                    if (rid !== bRoomId && activeRoomIds.includes(rid)) {
                       bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + beds;
                     }
                   }
