@@ -511,14 +511,19 @@ export default function CalendarView() {
     return room.roomCategory === "dormitory" && (room.totalBeds || 1) > 1;
   };
 
-  // Get total beds booked for a dormitory room in a date range
+  // Get total beds booked for a dormitory room in a date range.
+  // Checks BOTH roomId (single-room) and roomIds array (multi-room / OTA bookings)
+  // to avoid showing wrong "X free" count when a booking has a stale primary roomId.
   const getBedsBookedForDateRange = (roomId: number, startDate: Date, endDate: Date): number => {
     const startStr = format(startDate, "yyyy-MM-dd");
     const endStr = format(endDate, "yyyy-MM-dd");
     
     return bookings
       .filter(b => {
-        const roomMatches = b.roomId === roomId;
+        // Multi-room-aware room match: use roomIds if populated, else fall back to roomId
+        const roomMatches = (b.roomIds && b.roomIds.length > 0)
+          ? b.roomIds.includes(roomId)
+          : b.roomId === roomId;
         if (!roomMatches) return false;
         
         const bookingStart = format(new Date(b.checkInDate), "yyyy-MM-dd");
