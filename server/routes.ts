@@ -4515,8 +4515,18 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       // ── Overlap guard for booking edits ──────────────────────────────────────
       // Only validate when dates or room assignment actually change.
-      const datesChanging  = validatedData.checkInDate !== undefined || validatedData.checkOutDate !== undefined;
-      const roomChanging   = validatedData.roomId !== undefined || validatedData.roomIds !== undefined;
+      // Compare submitted values to existing to avoid false positives when the
+      // frontend always sends all fields (roomId, dates) even for price-only edits.
+      const toDay = (d: any): string => (d instanceof Date ? d.toISOString() : String(d ?? "")).slice(0, 10);
+      const existCheckIn  = toDay(existingBooking.checkInDate);
+      const existCheckOut = toDay(existingBooking.checkOutDate);
+      const newCheckIn    = validatedData.checkInDate  !== undefined ? toDay(validatedData.checkInDate)  : existCheckIn;
+      const newCheckOut   = validatedData.checkOutDate !== undefined ? toDay(validatedData.checkOutDate) : existCheckOut;
+      const datesChanging  = newCheckIn !== existCheckIn || newCheckOut !== existCheckOut;
+      const newRoomId      = validatedData.roomId  !== undefined ? validatedData.roomId  : existingBooking.roomId;
+      const newRoomIds     = validatedData.roomIds !== undefined ? validatedData.roomIds : (existingBooking.roomIds as number[] | null);
+      const roomChanging   = newRoomId !== existingBooking.roomId ||
+                             JSON.stringify((newRoomIds ?? []).slice().sort()) !== JSON.stringify(((existingBooking.roomIds as number[] | null) ?? []).slice().sort());
       if (datesChanging || roomChanging) {
         const editToDayStr = (d: Date | string): string =>
           (d instanceof Date ? d.toISOString() : String(d)).slice(0, 10);
