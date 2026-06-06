@@ -1,0 +1,104 @@
+After comparing the Hostezee Room Calendar screenshots with the Aiosell Rates & Inventory screenshot, I found several mismatches.
+
+1. Double Room with Balcony
+Date	Hostezee Available	Aiosell Available	Gap
+6 Jun	6 left	1	❌ +5
+8 Jun	9 left	8	⚠️ +1
+9 Jun	6 left	2	❌ +4
+10 Jun	4 left	0	❌ +4
+12 Jun	7 left	5	⚠️ +2
+13 Jun	7 left	5	⚠️ +2
+15 Jun	10 left	10	✅ Match
+2. Queen Room with Balcony
+Date	Hostezee	Aiosell	Gap
+6 Jun	1 left	1	✅
+8 Jun	1 left	1	✅
+9 Jun	1 left	1	✅
+10 Jun	1 left	1	✅
+13 Jun	1 left	1	✅
+15 Jun	1 left	1	✅
+
+Queen Room with Balcony appears correctly synced.
+
+3. Superior Queen Room
+Date	Hostezee	Aiosell	Gap
+6 Jun	1 left	1	✅
+8 Jun	0 left	1	❌ Missing 1 room
+9 Jun	0 left	1	❌ Missing 1 room
+10 Jun	0 left	1	❌ Missing 1 room
+12 Jun	1 left	1	✅
+13 Jun	1 left	1	✅
+15 Jun	1 left	1	✅
+4. Deluxe Double Room with Balcony
+Date	Hostezee	Aiosell	Gap
+8 Jun	4 left	4	✅
+9 Jun	4 left	4	✅
+10 Jun	4 left	4	✅
+12 Jun	4 left	4	✅
+13 Jun	4 left	4	✅
+15 Jun	4 left	4	✅
+
+This category is synced correctly.
+
+5. King Room with Balcony
+Date	Hostezee	Aiosell	Gap
+8 Jun	1 left	1	✅
+9 Jun	1 left	1	✅
+10 Jun	1 left	1	✅
+12 Jun	1 left	1	✅
+13 Jun	1 left	1	✅
+15 Jun	1 left	1	✅
+
+King Room with Balcony is synced correctly.
+
+6. Dormitories
+6-Bed Mixed Dormitory
+
+Aiosell shows 0 available on almost all dates.
+
+Hostezee calendar also shows 0 free (6/6 occupied).
+
+✅ Appears synced.
+
+4-Bed Female Dormitory
+
+Aiosell shows 0 available.
+
+Hostezee shows 0 free (4/4 occupied).
+
+✅ Appears synced.
+
+Main Issues Found
+Critical Inventory Mismatch
+
+Double Room with Balcony
+
+6 Jun: Hostezee 6 vs Aiosell 1
+9 Jun: Hostezee 6 vs Aiosell 2
+10 Jun: Hostezee 4 vs Aiosell 0
+12 Jun: Hostezee 7 vs Aiosell 5
+13 Jun: Hostezee 7 vs Aiosell 5
+Critical Inventory Mismatch
+
+Superior Queen Room
+
+8 Jun: Hostezee 0 vs Aiosell 1
+9 Jun: Hostezee 0 vs Aiosell 1
+10 Jun: Hostezee 0 vs Aiosell 1
+Likely Cause
+
+The pattern suggests that:
+
+Some bookings exist in Hostezee but were not pushed to Aiosell.
+Or some rooms are blocked/occupied in Hostezee calendar but inventory reduction was not reflected in Aiosell.
+The sync issue seems concentrated around Double Room with Balcony and Superior Queen Room only.
+Recommended Check
+
+For dates 6–13 June, verify:
+
+Room mapping for Double Room with Balcony.
+Room mapping for Superior Queen Room.
+Sync logs (inventory sync history).
+Any pending/unassigned booking (I can see Pulkit Jain – pending at the top of the calendar).
+
+The largest gap is Double Room with Balcony on 6 June (6 vs 1 available), which indicates inventory is not matching between Hostezee and Aiosell for that room type.
