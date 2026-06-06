@@ -1,0 +1,87 @@
+I would like to upgrade the Emergency Stop Sales feature from property-wide stop-sell to room-type-level stop-sell control.
+
+Goal:
+Keep the property protected from overbookings while allowing me to test one room type at a time.
+
+Requirements:
+
+1. Add a Room-Level OTA Control section in Channel Manager.
+
+2. For each mapped room type show:
+
+   * Room Type Name
+   * Current OTA Status
+
+     * Open
+     * Closed
+   * Last Sync Status
+   * Last Inventory Push Time
+
+3. Add a toggle per room type:
+
+   Example:
+
+   [OPEN] Superior Queen Room
+   [CLOSED] Double Room with Balcony
+   [CLOSED] Deluxe Double Room with Balcony
+   [CLOSED] King Room with Balcony
+
+4. Keep the existing Property Emergency Stop feature.
+
+5. Add a new Testing Mode:
+
+   When enabled:
+
+   * Property remains protected.
+   * Only selected room types are opened on Aiosell.
+   * All other room types remain stop-sold.
+
+6. Workflow I want:
+
+   Step 1:
+   Emergency Stop ON for all room types.
+
+   Step 2:
+   Open only Superior Queen Room.
+
+   Step 3:
+   Verify:
+
+   * Hostezee Calendar
+   * Inventory Verification
+   * Aiosell Inventory
+   * OTA availability
+
+   Step 4:
+   Close Superior Queen Room again.
+
+   Step 5:
+   Open Double Room with Balcony.
+
+   Step 6:
+   Repeat until every room type is certified.
+
+7. Safety Requirements:
+
+   * Existing bookings must never be affected.
+   * Push Rates must continue working.
+   * Force Sync must continue working.
+   * Room-level stop-sell must survive health-job syncs.
+   * Manual Push Inventory must not accidentally reopen closed room types.
+
+8. Add an audit log:
+
+   Record:
+
+   * User
+   * Room Type
+   * Opened/Closed
+   * Date/Time
+
+9. Before implementing, explain:
+
+   * Whether Aiosell supports room-type-level stop-sell.
+   * Which API payload changes are required.
+   * Whether Booking.com, MMT, Agoda, Expedia and Goibibo will correctly receive room-level restrictions.
+
+Please implement the safest approach for production use because I will use this feature to certify each room type before reopening OTA sales for the entire property.
