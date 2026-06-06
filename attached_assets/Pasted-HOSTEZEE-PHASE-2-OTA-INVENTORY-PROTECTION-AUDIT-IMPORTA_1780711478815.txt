@@ -1,0 +1,159 @@
+HOSTEZEE PHASE 2 — OTA & INVENTORY PROTECTION AUDIT
+
+IMPORTANT:
+
+DO NOT MODIFY CODE YET.
+DO NOT DEPLOY.
+
+First verify the exact implementation approach and risks.
+
+====================================================
+ISS-024 — OTA HEARTBEAT SYNC
+============================
+
+Audit current OTA sync architecture.
+
+Verify:
+
+1. Is there already a periodic sync job?
+2. How often does inventory sync currently run?
+3. What events trigger sync?
+4. What happens if no booking events occur for 24 hours?
+5. Can inventory become stale?
+
+Identify:
+
+* Existing cron jobs
+* Existing intervals
+* Existing scheduled tasks
+
+Recommend safest implementation for:
+
+30-minute heartbeat inventory sync.
+
+Provide:
+
+Files
+Functions
+Estimated LOC
+Risk Level
+
+====================================================
+ISS-007 — RETRY EXHAUSTION RECOVERY
+===================================
+
+Trace complete flow when:
+
+Aiosell API fails.
+
+Show:
+
+Attempt 1
+Attempt 2
+Attempt 3
+
+Then explain:
+
+What happens after final failure?
+
+Verify:
+
+* Is failed sync logged?
+* Is retry queue present?
+* Is inventory left stale?
+* Is recovery automatic?
+
+Recommend:
+
+Safest recovery mechanism.
+
+====================================================
+ISS-004 — OTA SOURCE VALIDATION
+===============================
+
+Scan entire codebase.
+
+Find:
+
+Every location where bookings.source is:
+
+Read
+Written
+Validated
+
+Generate report:
+
+File
+Function
+Purpose
+
+Also identify:
+
+All possible OTA source values currently used.
+
+Examples:
+
+aiosell-booking.com
+aiosell-goibibo
+aiosell-makemytrip
+booking.com
+goibibo
+makemytrip
+
+Determine:
+
+Which values can break inventory deduction.
+
+====================================================
+HISTORICAL DATA AUDIT
+=====================
+
+Before implementing ISS-004:
+
+Generate database audit query.
+
+Find bookings where:
+
+source resembles OTA
+
+but does not start with:
+
+aiosell-
+
+Report:
+
+Booking ID
+Property
+Guest
+Check-In
+Check-Out
+Source
+
+Do not modify data.
+
+Only report count and affected records.
+
+====================================================
+DEPLOYMENT READINESS
+====================
+
+For:
+
+ISS-024
+ISS-007
+ISS-004
+
+Provide:
+
+Complexity
+Risk
+Testing Required
+Rollback Plan
+
+Recommend:
+
+Which issue should be implemented first.
+
+DO NOT WRITE CODE.
+
+ONLY GENERATE IMPLEMENTATION READINESS REPORT.
