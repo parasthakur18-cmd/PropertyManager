@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info, CreditCard, Check, Send, ChevronLeft, ChevronRight, MessageSquare, FileEdit, MoreHorizontal, BedDouble, LogIn, Wallet } from "lucide-react";
+import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info, CreditCard, Check, Send, ChevronLeft, ChevronRight, MessageSquare, FileEdit, MoreHorizontal, BedDouble, LogIn, Wallet, FileText } from "lucide-react";
 import { IdVerificationUpload } from "@/components/IdVerificationUpload";
 import { GuestIdUpload } from "@/components/GuestIdUpload";
 import { BookingQRCode } from "@/components/BookingQRCode";
@@ -1041,6 +1041,244 @@ export default function Bookings() {
         description: error.message || "Failed to create guest",
         variant: "destructive",
       });
+    }
+  };
+
+  const downloadConfirmationVoucher = async (booking: Booking) => {
+    try {
+      const property = propertyMap.get(booking.propertyId);
+      const room = booking.roomId ? roomMap.get(booking.roomId) : null;
+      const guest = guestMap.get(booking.guestId ?? 0);
+
+      // Room type: single room or multi-room group booking
+      let roomLabel = "N/A";
+      if (booking.roomIds && booking.roomIds.length > 1) {
+        const types = [...new Set(booking.roomIds.map(id => roomMap.get(id)?.roomType).filter(Boolean))];
+        roomLabel = types.join(", ") || "Multiple Rooms";
+      } else if (room) {
+        roomLabel = `${room.roomType}${room.roomNumber ? ` (Room ${room.roomNumber})` : ""}`;
+      }
+
+      const guestName = guest?.fullName ?? booking.guestId ? (guest?.fullName ?? "Guest") : "Guest";
+      const totalAmt = parseFloat(booking.totalAmount?.toString() ?? "0");
+      const advanceAmt = parseFloat(booking.advanceAmount?.toString() ?? "0");
+      const remaining = Math.max(0, totalAmt - advanceAmt);
+      const paymentStatus =
+        totalAmt > 0 && advanceAmt >= totalAmt ? "Fully Paid" :
+        advanceAmt > 0 ? "Partially Paid" :
+        "Unpaid";
+
+      const formatDate = (d: string | Date | null | undefined) => {
+        if (!d) return "—";
+        return format(new Date(d), "dd MMM yyyy");
+      };
+
+      const checkIn = formatDate(booking.checkInDate);
+      const checkOut = formatDate(booking.checkOutDate);
+      const nights = (() => {
+        try {
+          const ci = new Date(booking.checkInDate);
+          const co = new Date(booking.checkOutDate);
+          return Math.max(1, Math.round((co.getTime() - ci.getTime()) / 86400000));
+        } catch { return 1; }
+      })();
+      const mealPlan = booking.mealPlan && booking.mealPlan !== "none" ? booking.mealPlan.toUpperCase() : "None";
+      const bookingSource = booking.source
+        ? booking.source.charAt(0).toUpperCase() + booking.source.slice(1)
+        : "Direct";
+
+      const propertyName = property?.name ?? "Property";
+      const propertyPhone = property?.contactPhone ?? "";
+      const propertyEmail = property?.contactEmail ?? "";
+      const propertyLocation = property?.location ?? "";
+
+      const voucherHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"/><style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family: Arial, sans-serif; color: #222; background:#fff; font-size:13px; }
+        .page { width:100%; max-width:760px; margin:0 auto; padding:32px 36px; }
+        .header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #1E3A5F; padding-bottom:20px; margin-bottom:24px; }
+        .brand h1 { font-size:22px; font-weight:700; color:#1E3A5F; letter-spacing:0.5px; }
+        .brand p { font-size:11px; color:#2BB6A8; font-weight:600; margin-top:2px; letter-spacing:0.8px; text-transform:uppercase; }
+        .voucher-title { text-align:right; }
+        .voucher-title h2 { font-size:18px; font-weight:700; color:#1E3A5F; }
+        .voucher-title .booking-id { font-size:13px; color:#555; margin-top:4px; }
+        .voucher-title .status-badge { display:inline-block; margin-top:6px; background:#2BB6A8; color:#fff; font-size:10px; font-weight:700; padding:3px 10px; border-radius:12px; text-transform:uppercase; letter-spacing:0.5px; }
+        .section { margin-bottom:20px; }
+        .section-title { font-size:11px; font-weight:700; color:#1E3A5F; text-transform:uppercase; letter-spacing:1px; border-bottom:1px solid #e5e5e5; padding-bottom:5px; margin-bottom:12px; }
+        .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+        .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
+        .info-block { }
+        .info-block .label { font-size:10px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:2px; }
+        .info-block .value { font-size:13px; color:#222; font-weight:500; }
+        .stay-bar { background:#F2F7FF; border-left:4px solid #1E3A5F; border-radius:4px; padding:14px 18px; margin-bottom:20px; display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:12px; }
+        .stay-bar .ci, .stay-bar .co { }
+        .stay-bar .ci .lbl, .stay-bar .co .lbl { font-size:10px; color:#1E3A5F; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+        .stay-bar .ci .dt, .stay-bar .co .dt { font-size:16px; font-weight:700; color:#1E3A5F; margin-top:2px; }
+        .stay-bar .arrow { text-align:center; font-size:20px; color:#2BB6A8; font-weight:700; }
+        .stay-bar .nights { font-size:11px; color:#555; text-align:center; }
+        .payment-table { width:100%; border-collapse:collapse; }
+        .payment-table tr td { padding:7px 0; border-bottom:1px solid #f0f0f0; }
+        .payment-table tr td:last-child { text-align:right; font-weight:600; }
+        .payment-table .total-row td { font-weight:700; font-size:14px; color:#1E3A5F; padding-top:10px; border-bottom:2px solid #1E3A5F; }
+        .payment-table .advance-row td { color:#2BB6A8; }
+        .payment-table .balance-row td { color:${remaining > 0 ? "#d97706" : "#16a34a"}; font-size:13px; }
+        .badge { display:inline-block; padding:3px 10px; border-radius:10px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+        .badge-paid { background:#dcfce7; color:#16a34a; }
+        .badge-partial { background:#fef9c3; color:#b45309; }
+        .badge-unpaid { background:#fee2e2; color:#dc2626; }
+        .terms { background:#f9f9f9; border-radius:4px; padding:14px 16px; font-size:11px; color:#555; line-height:1.7; }
+        .terms ul { padding-left:16px; }
+        .terms ul li { margin-bottom:3px; }
+        .footer { margin-top:28px; border-top:1px solid #e5e5e5; padding-top:14px; display:flex; justify-content:space-between; align-items:center; }
+        .footer .contact { font-size:11px; color:#555; }
+        .footer .contact strong { color:#1E3A5F; }
+        .footer .generated { font-size:10px; color:#aaa; }
+        .highlight { color:#1E3A5F; font-weight:700; }
+      </style></head><body>
+      <div class="page">
+        <div class="header">
+          <div class="brand">
+            <h1>${propertyName}</h1>
+            <p>Simplify Stays</p>
+            ${propertyLocation ? `<div style="font-size:11px;color:#555;margin-top:6px;">${propertyLocation}</div>` : ""}
+            ${propertyPhone ? `<div style="font-size:11px;color:#555;">📞 ${propertyPhone}</div>` : ""}
+            ${propertyEmail ? `<div style="font-size:11px;color:#555;">✉ ${propertyEmail}</div>` : ""}
+          </div>
+          <div class="voucher-title">
+            <h2>Booking Confirmation</h2>
+            <div class="booking-id">Booking ID: <strong>#${booking.id}</strong></div>
+            <div><span class="status-badge">Confirmed</span></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Guest Information</div>
+          <div class="grid2">
+            <div class="info-block">
+              <div class="label">Guest Name</div>
+              <div class="value highlight" style="font-size:15px;">${guestName}</div>
+            </div>
+            <div class="info-block">
+              <div class="label">Number of Guests</div>
+              <div class="value">${booking.numberOfGuests ?? 1} guest${(booking.numberOfGuests ?? 1) > 1 ? "s" : ""}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Stay Details</div>
+          <div class="stay-bar">
+            <div class="ci">
+              <div class="lbl">Check-In</div>
+              <div class="dt">${checkIn}</div>
+            </div>
+            <div>
+              <div class="arrow">→</div>
+              <div class="nights">${nights} night${nights !== 1 ? "s" : ""}</div>
+            </div>
+            <div class="co">
+              <div class="lbl" style="text-align:right">Check-Out</div>
+              <div class="dt" style="text-align:right">${checkOut}</div>
+            </div>
+          </div>
+          <div class="grid3">
+            <div class="info-block">
+              <div class="label">Room Type</div>
+              <div class="value">${roomLabel}</div>
+            </div>
+            <div class="info-block">
+              <div class="label">Meal Plan</div>
+              <div class="value">${mealPlan}</div>
+            </div>
+            <div class="info-block">
+              <div class="label">Booking Source</div>
+              <div class="value">${bookingSource}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Payment Summary</div>
+          <table class="payment-table">
+            <tr class="total-row">
+              <td>Total Booking Amount</td>
+              <td>₹${totalAmt.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+            <tr class="advance-row">
+              <td>Advance Amount Received</td>
+              <td>₹${advanceAmt.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+            <tr class="balance-row">
+              <td>Remaining Balance</td>
+              <td>₹${remaining.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+            <tr>
+              <td>Payment Status</td>
+              <td><span class="badge ${paymentStatus === "Fully Paid" ? "badge-paid" : paymentStatus === "Partially Paid" ? "badge-partial" : "badge-unpaid"}">${paymentStatus}</span></td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Terms &amp; Conditions</div>
+          <div class="terms">
+            <ul>
+              <li>Check-in time is from <strong>12:00 PM</strong>. Early check-in is subject to availability.</li>
+              <li>Check-out time is <strong>11:00 AM</strong>. Late check-out may attract additional charges.</li>
+              <li>Valid government-issued photo ID is mandatory at check-in for all guests.</li>
+              <li>Any damages to property will be charged to the guest's account.</li>
+              <li>Cancellations must be communicated in advance as per the property's cancellation policy.</li>
+              <li>The advance amount paid is non-refundable unless stated otherwise in the cancellation policy.</li>
+              <li>Guests are expected to follow the property's house rules and maintain decorum.</li>
+              <li>The property reserves the right to refuse service for violation of terms.</li>
+              <li>This voucher is subject to confirmation by the property. Please carry a copy at check-in.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="footer">
+          <div class="contact">
+            <strong>${propertyName}</strong>
+            ${propertyPhone ? ` · 📞 ${propertyPhone}` : ""}
+            ${propertyEmail ? ` · ✉ ${propertyEmail}` : ""}
+          </div>
+          <div class="generated">Generated by Hostezee · ${format(new Date(), "dd MMM yyyy, hh:mm a")}</div>
+        </div>
+      </div>
+      </body></html>`;
+
+      const html2pdfLib = (await import('html2pdf.js')).default;
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;overflow:hidden;pointer-events:none;z-index:-1;';
+      const el = document.createElement('div');
+      el.style.cssText = 'width:760px;background:#fff;';
+      el.innerHTML = voucherHtml;
+      wrapper.appendChild(el);
+      document.body.appendChild(wrapper);
+      const fileName = `Booking_Voucher_${guestName.replace(/\s+/g, "_")}_${booking.id}.pdf`;
+      let pdfBlob: Blob;
+      try {
+        pdfBlob = await html2pdfLib().from(el).set({
+          margin: [8, 8, 8, 8],
+          filename: fileName,
+          html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        }).outputPdf('blob');
+      } finally {
+        document.body.removeChild(wrapper);
+      }
+      const blobUrl = URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+      toast({ title: "Voucher Downloaded", description: `Booking confirmation saved as "${fileName}"` });
+    } catch (err: any) {
+      console.error("Voucher PDF error:", err);
+      toast({ title: "Download Failed", description: "Could not generate the voucher PDF. Please try again.", variant: "destructive" });
     }
   };
 
@@ -2666,6 +2904,12 @@ export default function Bookings() {
                                   data-testid={`mi-edit-${booking.id}`}
                                 >
                                   <Pencil className="h-4 w-4 mr-2" /> Edit Booking
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => downloadConfirmationVoucher(booking)}
+                                  data-testid={`mi-voucher-${booking.id}`}
+                                >
+                                  <FileText className="h-4 w-4 mr-2 text-blue-600" /> Download Confirmation Voucher
                                 </DropdownMenuItem>
                                 {booking.status === "checked-out" && (
                                   <DropdownMenuItem
