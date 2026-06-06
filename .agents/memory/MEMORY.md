@@ -1,3 +1,4 @@
 - [Customer menu premium UX](customer-menu-ux.md) — Phase 1 hotel dining homepage: MEAL_SLOTS + activeMealSlot navigation, all frontend-only in customer-menu.tsx
 - [Aiosell inventory sync behavior](aiosell-inventory-sync.md) — Aiosell shows pushed_count minus its own OTA bookings; no GET API; debug endpoint at /inventory-debug
 - [Drizzle undefined column crash](drizzle-undefined-column.md) — Selecting a non-existent column (e.g. bookings.roomType) causes "Cannot convert undefined or null to object" BEFORE any DB query runs
+- [Production deploy requires build step](production-build-deploy.md) — live server runs compiled dist/index.js; git pull alone is never enough

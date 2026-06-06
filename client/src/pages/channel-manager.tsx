@@ -3356,7 +3356,12 @@ function InventoryVerificationTab({ propertyId }: { propertyId: number }) {
     queryKey: ["/api/aiosell/inventory-verification", propertyId, date],
     queryFn: async () => {
       const res = await fetch(`/api/aiosell/inventory-verification?propertyId=${propertyId}&date=${date}`, { credentials: "include" });
-      if (!res.ok) { let msg = "Failed to load"; try { const e = await res.json(); msg = e.message || msg; } catch (_) {} throw new Error(msg); }
+      const ct = res.headers.get("content-type") || "";
+      if (!res.ok || !ct.includes("application/json")) {
+        let msg = "Failed to load inventory verification";
+        if (ct.includes("application/json")) { try { const e = await res.json(); msg = e.message || msg; } catch (_) {} }
+        throw new Error(msg);
+      }
       return res.json();
     },
     enabled: !!propertyId,
@@ -4204,7 +4209,12 @@ function RoomControlTab({ propertyId }: { propertyId: number }) {
     queryKey: ["/api/aiosell/room-control/status", propertyId],
     queryFn: async () => {
       const res = await fetch(`/api/aiosell/room-control/status?propertyId=${propertyId}`, { credentials: "include" });
-      if (!res.ok) { let msg = "Failed to load"; try { const e = await res.json(); msg = e.message || msg; } catch (_) {} throw new Error(msg); }
+      const ct = res.headers.get("content-type") || "";
+      if (!res.ok || !ct.includes("application/json")) {
+        let msg = "Room Control feature not available — please run: git pull && npm run build && pm2 restart propertymanager";
+        if (ct.includes("application/json")) { try { const e = await res.json(); msg = e.message || msg; } catch (_) {} }
+        throw new Error(msg);
+      }
       return res.json();
     },
     enabled: !!propertyId,
