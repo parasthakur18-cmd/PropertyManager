@@ -23413,7 +23413,7 @@ Respond ONLY with valid JSON (no markdown, no extra text):
         id: bookings.id, roomId: bookings.roomId, roomIds: bookings.roomIds,
         checkInDate: bookings.checkInDate, checkOutDate: bookings.checkOutDate,
         status: bookings.status, bedsBooked: bookings.bedsBooked,
-        numberOfGuests: bookings.numberOfGuests, guestName: bookings.guestName,
+        numberOfGuests: bookings.numberOfGuests,
         source: bookings.source, externalBookingId: bookings.externalBookingId,
       }).from(bookings).where(and(
         eq(bookings.propertyId, propertyId),
@@ -23423,6 +23423,7 @@ Respond ONLY with valid JSON (no markdown, no extra text):
       ));
 
       const activeBookingIds = activeBookings.map(b => b.id);
+      const guestNameByBookingId = new Map<number, string>();
       const tbsStaysByBookingId = new Map<number, { aiosellRoomCode: string }[]>();
       const confirmedStayRoomIdsByBookingId = new Map<number, number[]>();
 
@@ -23451,6 +23452,13 @@ Respond ONLY with valid JSON (no markdown, no extra text):
           if (!confirmedStayRoomIdsByBookingId.has(stay.bookingId)) confirmedStayRoomIdsByBookingId.set(stay.bookingId, []);
           confirmedStayRoomIdsByBookingId.get(stay.bookingId)!.push(stay.roomId);
         }
+        // Fetch primary guest names (bookings has no guestName; it lives in bookingGuests)
+        const _pgOld = await db.select({ bookingId: bookingGuests.bookingId, guestName: bookingGuests.guestName })
+          .from(bookingGuests).where(and(
+            inArray(bookingGuests.bookingId, activeBookingIds),
+            eq(bookingGuests.isPrimary, true),
+          ));
+        for (const g of _pgOld) guestNameByBookingId.set(g.bookingId, g.guestName);
       }
 
       // ── 2. Load stop-sell restrictions ────────────────────────────────────────
@@ -23618,19 +23626,19 @@ Respond ONLY with valid JSON (no markdown, no extra text):
                 const matchedStays = stayRoomIds.filter(rid => activeRoomIds.includes(rid));
                 for (const rid of matchedStays) bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + 1;
                 if (matchedStays.length > 0) {
-                  contributingBookings.push({ bookingId: b.id, guestName: b.guestName, source: b.source, externalId: b.externalBookingId, type: "confirmed_stay", roomIds: matchedStays, beds: matchedStays.length });
+                  contributingBookings.push({ bookingId: b.id, guestName: (guestNameByBookingId.get(b.id) ?? "Guest"), source: b.source, externalId: b.externalBookingId, type: "confirmed_stay", roomIds: matchedStays, beds: matchedStays.length });
                 }
               } else {
                 const beds = b.bedsBooked || b.numberOfGuests || 1;
                 const bookingRoomIds: number[] = [];
                 if (b.roomId && activeRoomIds.includes(b.roomId)) { bedsBookedByRoom[b.roomId] = (bedsBookedByRoom[b.roomId] || 0) + beds; bookingRoomIds.push(b.roomId); }
                 if (b.roomIds) { for (const rid of b.roomIds) { if (activeRoomIds.includes(rid)) { bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + beds; bookingRoomIds.push(rid); } } }
-                if (bookingRoomIds.length > 0) contributingBookings.push({ bookingId: b.id, guestName: b.guestName, source: b.source, externalId: b.externalBookingId, type: "direct", roomIds: bookingRoomIds, beds });
+                if (bookingRoomIds.length > 0) contributingBookings.push({ bookingId: b.id, guestName: (guestNameByBookingId.get(b.id) ?? "Guest"), source: b.source, externalId: b.externalBookingId, type: "direct", roomIds: bookingRoomIds, beds });
               }
 
               // TBS dorm beds
               if (!b.roomId && tbsForBooking.some(stay => stay.aiosellRoomCode === mapping.aiosellRoomCode)) {
-                contributingBookings.push({ bookingId: b.id, guestName: b.guestName, source: b.source, externalId: b.externalBookingId, type: "tbs_ota", beds: tbsForBooking.filter(s => s.aiosellRoomCode === mapping.aiosellRoomCode).length });
+                contributingBookings.push({ bookingId: b.id, guestName: (guestNameByBookingId.get(b.id) ?? "Guest"), source: b.source, externalId: b.externalBookingId, type: "tbs_ota", beds: tbsForBooking.filter(s => s.aiosellRoomCode === mapping.aiosellRoomCode).length });
               }
             }
 
@@ -23694,7 +23702,7 @@ Respond ONLY with valid JSON (no markdown, no extra text):
 
               const addedRooms = [...bookedRoomIds].filter(id => !bookedBefore.has(id));
               if (addedRooms.length > 0 || myTbs > 0) {
-                contributingBookings.push({ bookingId: b.id, guestName: b.guestName, source: b.source, externalId: b.externalBookingId, type: myTbs > 0 ? "tbs_ota" : "confirmed", roomIds: addedRooms, tbsCount: myTbs });
+                contributingBookings.push({ bookingId: b.id, guestName: (guestNameByBookingId.get(b.id) ?? "Guest"), source: b.source, externalId: b.externalBookingId, type: myTbs > 0 ? "tbs_ota" : "confirmed", roomIds: addedRooms, tbsCount: myTbs });
               }
             }
 
@@ -23848,7 +23856,7 @@ Respond ONLY with valid JSON (no markdown, no extra text):
         id: bookings.id, roomId: bookings.roomId, roomIds: bookings.roomIds,
         checkInDate: bookings.checkInDate, checkOutDate: bookings.checkOutDate,
         status: bookings.status, bedsBooked: bookings.bedsBooked,
-        numberOfGuests: bookings.numberOfGuests, guestName: bookings.guestName,
+        numberOfGuests: bookings.numberOfGuests,
         source: bookings.source, externalBookingId: bookings.externalBookingId,
       }).from(bookings).where(and(
         eq(bookings.propertyId, propertyId),
@@ -23871,8 +23879,9 @@ Respond ONLY with valid JSON (no markdown, no extra text):
       const tbsStaysByBookingId = new Map<number, { aiosellRoomCode: string }[]>();
       const confirmedStayRoomIdsByBookingId = new Map<number, number[]>();
       const activeBookingIds = activeBookingRows.map(b => b.id);
+      const guestNameByBookingId2 = new Map<number, string>();
       if (activeBookingIds.length > 0) {
-        const [tbsStays, confirmedStays] = await Promise.all([
+        const [tbsStays, confirmedStays, primaryGuests2] = await Promise.all([
           db.select({ bookingId: bookingRoomStays.bookingId, aiosellRoomCode: bookingRoomStays.aiosellRoomCode })
             .from(bookingRoomStays).where(and(
               inArray(bookingRoomStays.bookingId, activeBookingIds),
@@ -23883,7 +23892,13 @@ Respond ONLY with valid JSON (no markdown, no extra text):
               inArray(bookingRoomStays.bookingId, activeBookingIds),
               isNotNull(bookingRoomStays.roomId)
             )),
+          db.select({ bookingId: bookingGuests.bookingId, guestName: bookingGuests.guestName })
+            .from(bookingGuests).where(and(
+              inArray(bookingGuests.bookingId, activeBookingIds),
+              eq(bookingGuests.isPrimary, true)
+            )),
         ]);
+        for (const g of primaryGuests2) guestNameByBookingId2.set(g.bookingId, g.guestName);
         for (const s of tbsStays) {
           if (!s.aiosellRoomCode) continue;
           const arr = tbsStaysByBookingId.get(s.bookingId) ?? [];
@@ -23969,7 +23984,7 @@ Respond ONLY with valid JSON (no markdown, no extra text):
               const matched = stayRoomIds.filter(rid => activeRoomIds.includes(rid));
               for (const rid of matched) bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + 1;
               if (matched.length > 0) {
-                const entry = { bookingId: b.id, guestName: b.guestName, source: b.source, externalId: b.externalBookingId, beds: matched.length };
+                const entry = { bookingId: b.id, guestName: (guestNameByBookingId2.get(b.id) ?? "Guest"), source: b.source, externalId: b.externalBookingId, beds: matched.length };
                 if (isOta) { otaBookingsDetail.push(entry); otaOccupied += matched.length; }
                 else { directBookingsDetail.push(entry); directOccupied += matched.length; }
               }
@@ -23988,7 +24003,7 @@ Respond ONLY with valid JSON (no markdown, no extra text):
                 }
               }
               if (bookingRoomIds.length > 0) {
-                const entry = { bookingId: b.id, guestName: b.guestName, source: b.source, externalId: b.externalBookingId, beds };
+                const entry = { bookingId: b.id, guestName: (guestNameByBookingId2.get(b.id) ?? "Guest"), source: b.source, externalId: b.externalBookingId, beds };
                 if (isOta) { otaBookingsDetail.push(entry); otaOccupied += beds; }
                 else { directBookingsDetail.push(entry); directOccupied += beds; }
               }
@@ -24024,7 +24039,7 @@ Respond ONLY with valid JSON (no markdown, no extra text):
             const isOta = isAiosellSourced(b.source);
             const addedCount = bookedRoomIds.size - prevSize;
             if (addedCount > 0 || myTbs > 0) {
-              const entry = { bookingId: b.id, guestName: b.guestName, source: b.source, externalId: b.externalBookingId, rooms: addedCount, tbsCount: myTbs };
+              const entry = { bookingId: b.id, guestName: (guestNameByBookingId2.get(b.id) ?? "Guest"), source: b.source, externalId: b.externalBookingId, rooms: addedCount, tbsCount: myTbs };
               if (isOta || myTbs > 0) { otaBookingsDetail.push(entry); otaOccupied += addedCount + myTbs; }
               else { directBookingsDetail.push(entry); directOccupied += addedCount; }
             }

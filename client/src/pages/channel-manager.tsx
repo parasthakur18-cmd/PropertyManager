@@ -3356,7 +3356,7 @@ function InventoryVerificationTab({ propertyId }: { propertyId: number }) {
     queryKey: ["/api/aiosell/inventory-verification", propertyId, date],
     queryFn: async () => {
       const res = await fetch(`/api/aiosell/inventory-verification?propertyId=${propertyId}&date=${date}`, { credentials: "include" });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed to load"); }
+      if (!res.ok) { let msg = "Failed to load"; try { const e = await res.json(); msg = e.message || msg; } catch (_) {} throw new Error(msg); }
       return res.json();
     },
     enabled: !!propertyId,
@@ -4204,7 +4204,7 @@ function RoomControlTab({ propertyId }: { propertyId: number }) {
     queryKey: ["/api/aiosell/room-control/status", propertyId],
     queryFn: async () => {
       const res = await fetch(`/api/aiosell/room-control/status?propertyId=${propertyId}`, { credentials: "include" });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed to load"); }
+      if (!res.ok) { let msg = "Failed to load"; try { const e = await res.json(); msg = e.message || msg; } catch (_) {} throw new Error(msg); }
       return res.json();
     },
     enabled: !!propertyId,
