@@ -1298,6 +1298,50 @@ async function addAiosellEmergencyStop(): Promise<void> {
   }
 }
 
+async function addRoomOtaControlTables(): Promise<void> {
+  // room_ota_control_logs — audit trail for open/close/certify actions per room
+  const hasControlLogs = await db.execute(
+    sql`SELECT to_regclass('room_ota_control_logs') AS t`
+  ).then(r => !!(r.rows[0] as any)?.t);
+  if (!hasControlLogs) {
+    await runRaw(`CREATE TABLE room_ota_control_logs (
+      id SERIAL PRIMARY KEY,
+      property_id INTEGER NOT NULL,
+      config_id INTEGER NOT NULL,
+      room_mapping_id INTEGER NOT NULL,
+      room_code VARCHAR(100) NOT NULL,
+      room_type VARCHAR(100) NOT NULL,
+      action VARCHAR(50) NOT NULL,
+      performed_by VARCHAR(255) NOT NULL,
+      performed_at TIMESTAMP DEFAULT NOW() NOT NULL,
+      notes TEXT,
+      push_success BOOLEAN,
+      push_error TEXT
+    )`);
+  }
+  // room_certification_logs — per-room certification history
+  const hasCertLogs = await db.execute(
+    sql`SELECT to_regclass('room_certification_logs') AS t`
+  ).then(r => !!(r.rows[0] as any)?.t);
+  if (!hasCertLogs) {
+    await runRaw(`CREATE TABLE room_certification_logs (
+      id SERIAL PRIMARY KEY,
+      property_id INTEGER NOT NULL,
+      config_id INTEGER NOT NULL,
+      room_mapping_id INTEGER NOT NULL,
+      room_code VARCHAR(100) NOT NULL,
+      room_type VARCHAR(100) NOT NULL,
+      status VARCHAR(20) NOT NULL,
+      certified_by VARCHAR(255) NOT NULL,
+      certified_at TIMESTAMP DEFAULT NOW() NOT NULL,
+      notes TEXT,
+      hostezee_calc INTEGER,
+      last_pushed INTEGER,
+      mismatch BOOLEAN
+    )`);
+  }
+}
+
 async function addMenuItemAllDayColumn(): Promise<void> {
   // Add the available_all_day column if it doesn't exist
   if (!(await columnExists("menu_items", "available_all_day"))) {
@@ -1363,6 +1407,12 @@ export async function runStartupMigrations(): Promise<void> {
     await addAiosellEmergencyStop();
   } catch (err: any) {
     console.warn(`[MIGRATE] aiosell_emergency_stop: ${err.message}`);
+  }
+
+  try {
+    await addRoomOtaControlTables();
+  } catch (err: any) {
+    console.warn(`[MIGRATE] room_ota_control_tables: ${err.message}`);
   }
 }
 

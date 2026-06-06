@@ -4153,6 +4153,444 @@ function AIAuditorTab({ propertyId }: { propertyId: number }) {
   );
 }
 
+// ── Room-Level OTA Control + Certification Tab ────────────────────────────────
+
+interface RoomControlRoom {
+  roomMappingId: number;
+  roomType: string;
+  roomCode: string;
+  otaStatus: "open" | "closed";
+  lastPushed: { available: number; pushTime: string; success: boolean } | null;
+  latestCert: {
+    status: string;
+    certifiedBy: string;
+    certifiedAt: string;
+    notes: string | null;
+    hostezeeCalc: number | null;
+    lastPushed: number | null;
+    mismatch: boolean | null;
+  } | null;
+  certHistory: {
+    id: number;
+    status: string;
+    certifiedBy: string;
+    certifiedAt: string;
+    notes: string | null;
+    hostezeeCalc: number | null;
+    lastPushed: number | null;
+    mismatch: boolean | null;
+  }[];
+}
+
+interface RoomControlStatus {
+  propertyId: number;
+  emergencyStopActive: boolean;
+  emergencyStopActivatedBy: string | null;
+  emergencyStopActivatedAt: string | null;
+  totalRooms: number;
+  certifiedCount: number;
+  closedCount: number;
+  rooms: RoomControlRoom[];
+  generatedAt: string;
+}
+
+function RoomControlTab({ propertyId }: { propertyId: number }) {
+  const { toast } = useToast();
+  const [expandedHistory, setExpandedHistory] = useState<Set<number>>(new Set());
+  const [certifyDialog, setCertifyDialog] = useState<{ open: boolean; room: RoomControlRoom | null; status: "passed" | "failed" }>({ open: false, room: null, status: "passed" });
+  const [certNotes, setCertNotes] = useState("");
+
+  const { data, isLoading, error, refetch, isFetching } = useQuery<RoomControlStatus>({
+    queryKey: ["/api/aiosell/room-control/status", propertyId],
+    queryFn: async () => {
+      const res = await fetch(`/api/aiosell/room-control/status?propertyId=${propertyId}`, { credentials: "include" });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed to load"); }
+      return res.json();
+    },
+    enabled: !!propertyId,
+    staleTime: 20_000,
+    refetchInterval: 30_000,
+  });
+
+  const openMutation = useMutation({
+    mutationFn: async (roomMappingId: number) => {
+      const res = await apiRequest("/api/aiosell/room-control/open", "POST", { propertyId, roomMappingId });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/room-control/status", propertyId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/sync-logs"] });
+      toast({
+        title: data.pushSuccess ? `✅ ${data.roomType} opened` : `⚠️ ${data.roomType} opened (push failed)`,
+        description: data.message,
+        variant: data.pushSuccess ? "default" : "destructive",
+      });
+    },
+    onError: (err: any) => toast({ title: "Failed to open room", description: err.message, variant: "destructive" }),
+  });
+
+  const closeMutation = useMutation({
+    mutationFn: async (roomMappingId: number) => {
+      const res = await apiRequest("/api/aiosell/room-control/close", "POST", { propertyId, roomMappingId });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/room-control/status", propertyId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/sync-logs"] });
+      toast({
+        title: data.pushSuccess ? `🚫 ${data.roomType} closed` : `⚠️ ${data.roomType} closed (push failed)`,
+        description: data.message,
+        variant: data.pushSuccess ? "default" : "destructive",
+      });
+    },
+    onError: (err: any) => toast({ title: "Failed to close room", description: err.message, variant: "destructive" }),
+  });
+
+  const certifyMutation = useMutation({
+    mutationFn: async ({ roomMappingId, status, notes, hostezeeCalc, lastPushed, mismatch }: {
+      roomMappingId: number; status: string; notes: string;
+      hostezeeCalc?: number | null; lastPushed?: number | null; mismatch?: boolean | null;
+    }) => {
+      const res = await apiRequest("/api/aiosell/room-control/certify", "POST", { propertyId, roomMappingId, status, notes, hostezeeCalc, lastPushed, mismatch });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/room-control/status", propertyId] });
+      setCertifyDialog({ open: false, room: null, status: "passed" });
+      setCertNotes("");
+      toast({
+        title: data.status === "passed" ? `✅ ${data.roomType} Certified` : `❌ ${data.roomType} Failed`,
+        description: `Marked by ${data.certifiedBy}`,
+      });
+    },
+    onError: (err: any) => toast({ title: "Certification failed", description: err.message, variant: "destructive" }),
+  });
+
+  const isBusy = (id: number) => openMutation.isPending || closeMutation.isPending;
+
+  if (isLoading) return (
+    <div className="flex items-center justify-center py-16">
+      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+    </div>
+  );
+
+  if (error) return (
+    <Alert variant="destructive" className="m-4">
+      <AlertCircle className="h-4 w-4" />
+      <AlertDescription>{(error as Error).message}</AlertDescription>
+    </Alert>
+  );
+
+  if (!data) return null;
+
+  return (
+    <div className="space-y-4 p-4">
+      {/* Emergency stop requirement notice */}
+      {!data.emergencyStopActive && (
+        <Alert className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20">
+          <AlertCircle className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="text-amber-700 dark:text-amber-300">
+            <strong>Emergency Stop is not active.</strong> Room-level OTA control is only available while Emergency Stop is on. Activate it from the banner above first.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Header card */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ShieldCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              Room-Level OTA Control
+              {data.emergencyStopActive && (
+                <Badge className="text-[10px] bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300 border border-red-200 ml-1">Emergency Stop Active</Badge>
+              )}
+            </CardTitle>
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} data-testid="button-room-control-refresh">
+              {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Refresh
+            </Button>
+          </div>
+          <CardDescription>
+            Open one room at a time, verify it on Hostezee + AioSell, then certify before moving to the next.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: "Total Rooms", value: data.totalRooms, cls: "text-foreground" },
+              { label: "Certified ✅", value: data.certifiedCount, cls: data.certifiedCount === data.totalRooms && data.totalRooms > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-foreground" },
+              { label: "Closed 🚫", value: data.closedCount, cls: data.closedCount > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400" },
+            ].map(s => (
+              <div key={s.label} className="rounded-lg border bg-muted/30 px-3 py-2 text-center">
+                <p className={`text-2xl font-bold ${s.cls}`}>{s.value}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{s.label}</p>
+              </div>
+            ))}
+          </div>
+          {data.certifiedCount === data.totalRooms && data.totalRooms > 0 && (
+            <Alert className="mt-3 border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/20">
+              <CheckCircle className="h-4 w-4 text-emerald-600" />
+              <AlertDescription className="text-emerald-700 dark:text-emerald-300">
+                <strong>All {data.totalRooms} room types certified!</strong> You can safely resume OTA sales from the Emergency Stop banner.
+              </AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Per-room cards */}
+      <div className="space-y-3">
+        {data.rooms.map(room => {
+          const isOpen = room.otaStatus === "open";
+          const cert = room.latestCert;
+          const certPassed = cert?.status === "passed";
+          const certFailed = cert?.status === "failed";
+          const historyExpanded = expandedHistory.has(room.roomMappingId);
+
+          return (
+            <Card key={room.roomMappingId} className={`border-2 ${isOpen ? "border-emerald-400 dark:border-emerald-600" : "border-red-300 dark:border-red-700"}`} data-testid={`card-room-control-${room.roomCode}`}>
+              <CardContent className="p-0">
+                {/* Room header row */}
+                <div className={`flex items-center justify-between gap-3 px-4 py-3 flex-wrap ${isOpen ? "bg-emerald-50 dark:bg-emerald-950/20" : "bg-red-50 dark:bg-red-950/20"}`}>
+                  <div className="flex items-center gap-3 min-w-0 flex-wrap">
+                    <span className={`font-bold text-sm ${isOpen ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}>
+                      {isOpen ? "● OPEN" : "● CLOSED"}
+                    </span>
+                    <span className="font-semibold text-sm">{room.roomType}</span>
+                    <code className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono hidden sm:block">{room.roomCode}</code>
+                    {certPassed && <Badge className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 border border-emerald-200 shrink-0">✅ Certified</Badge>}
+                    {certFailed && <Badge className="text-[10px] bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300 border border-red-200 shrink-0">❌ Failed</Badge>}
+                    {!cert && <Badge variant="outline" className="text-[10px] text-muted-foreground shrink-0">Not certified</Badge>}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {data.emergencyStopActive && (
+                      isOpen ? (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => closeMutation.mutate(room.roomMappingId)}
+                          disabled={isBusy(room.roomMappingId) || closeMutation.isPending}
+                          data-testid={`button-close-room-${room.roomCode}`}
+                        >
+                          {closeMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <OctagonX className="h-3.5 w-3.5" />}
+                          Close Room
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                          onClick={() => openMutation.mutate(room.roomMappingId)}
+                          disabled={isBusy(room.roomMappingId) || openMutation.isPending}
+                          data-testid={`button-open-room-${room.roomCode}`}
+                        >
+                          {openMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
+                          Open Room
+                        </Button>
+                      )
+                    )}
+                  </div>
+                </div>
+
+                {/* Verification row */}
+                <div className="px-4 py-3 border-t grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2 text-center">
+                    <p className="text-sm font-bold text-foreground">
+                      {room.lastPushed !== null ? room.lastPushed.available : "—"}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Last pushed to AioSell</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2 text-center">
+                    <p className={`text-sm font-bold ${isOpen ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                      {isOpen ? "Open" : "Stop-sell"}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Restriction status</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2 text-center">
+                    <p className={`text-sm font-bold ${room.lastPushed?.success ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
+                      {room.lastPushed ? (room.lastPushed.success ? "✓ OK" : "⚠ Failed") : "Never"}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Last push status</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2 text-center">
+                    <p className="text-[11px] font-medium text-foreground leading-tight">
+                      {room.lastPushed?.pushTime
+                        ? format(parseISO(room.lastPushed.pushTime), "dd MMM, h:mm a")
+                        : "—"}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Last sync time</p>
+                  </div>
+                </div>
+
+                {/* Certification row */}
+                {data.emergencyStopActive && (
+                  <div className="px-4 py-3 border-t flex items-center justify-between gap-3 flex-wrap bg-muted/20">
+                    <div className="text-xs text-muted-foreground">
+                      {cert ? (
+                        <span>
+                          Last certified: <span className={`font-semibold ${certPassed ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                            {cert.status === "passed" ? "PASSED" : "FAILED"}
+                          </span>
+                          {" by "}{cert.certifiedBy}
+                          {" · "}{format(parseISO(cert.certifiedAt), "dd MMM, h:mm a")}
+                          {cert.notes && <> · <em>{cert.notes}</em></>}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Not yet certified for this session</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-emerald-700 border-emerald-300 hover:bg-emerald-50 dark:text-emerald-400 dark:border-emerald-700"
+                        onClick={() => { setCertifyDialog({ open: true, room, status: "passed" }); setCertNotes(""); }}
+                        data-testid={`button-certify-pass-${room.roomCode}`}
+                      >
+                        <BadgeCheck className="h-3.5 w-3.5" />
+                        Mark Passed
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-red-700 border-red-300 hover:bg-red-50 dark:text-red-400 dark:border-red-700"
+                        onClick={() => { setCertifyDialog({ open: true, room, status: "failed" }); setCertNotes(""); }}
+                        data-testid={`button-certify-fail-${room.roomCode}`}
+                      >
+                        <XCircle className="h-3.5 w-3.5" />
+                        Mark Failed
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Certification history toggle */}
+                {room.certHistory.length > 0 && (
+                  <div className="border-t">
+                    <button
+                      className="w-full flex items-center gap-2 px-4 py-2 text-xs text-muted-foreground hover:bg-muted/30 transition-colors text-left"
+                      onClick={() => setExpandedHistory(prev => {
+                        const n = new Set(prev);
+                        n.has(room.roomMappingId) ? n.delete(room.roomMappingId) : n.add(room.roomMappingId);
+                        return n;
+                      })}
+                      data-testid={`button-cert-history-${room.roomCode}`}
+                    >
+                      {historyExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      Certification History ({room.certHistory.length} record{room.certHistory.length !== 1 ? "s" : ""})
+                    </button>
+                    {historyExpanded && (
+                      <div className="px-4 pb-3 space-y-1.5 bg-muted/10">
+                        {room.certHistory.map(c => (
+                          <div key={c.id} className={`flex items-start gap-3 text-xs rounded-md px-3 py-2 border ${c.status === "passed" ? "border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/20" : "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/20"}`}>
+                            <span className={`font-bold shrink-0 ${c.status === "passed" ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
+                              {c.status === "passed" ? "PASS" : "FAIL"}
+                            </span>
+                            <span className="text-muted-foreground flex-1 min-w-0">
+                              {format(parseISO(c.certifiedAt), "dd MMM yyyy, h:mm a")} · by {c.certifiedBy}
+                              {c.hostezeeCalc !== null && <> · Hostezee: {c.hostezeeCalc}</>}
+                              {c.lastPushed !== null && <> · Pushed: {c.lastPushed}</>}
+                              {c.mismatch && <span className="text-red-600"> · MISMATCH</span>}
+                              {c.notes && <> · <em>{c.notes}</em></>}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Workflow guide */}
+      <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20">
+        <CardContent className="pt-4 pb-3">
+          <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide mb-2">Certification Workflow</p>
+          <ol className="text-xs text-blue-700 dark:text-blue-300 space-y-1.5 list-decimal list-inside">
+            <li>Open one room → wait 10–15 min for OTAs to update</li>
+            <li>Check Inv. Verification tab for that room's availability</li>
+            <li>Verify on AioSell: Rates &amp; Restrictions → confirm room is open, counts match</li>
+            <li>Check the OTA (Booking.com / MMT) to confirm availability appears</li>
+            <li>If all values match → <strong>Mark Passed</strong>. If mismatch → <strong>Mark Failed</strong> + investigate</li>
+            <li>Close the room again, move to the next one</li>
+            <li>When all rooms are certified → Resume OTA Sales from the banner above</li>
+          </ol>
+          <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-2 font-medium">
+            ⚠️ "Last pushed to AioSell" shows the last inventory count we sent — not a live read-back from AioSell. Cross-check on AioSell dashboard for live confirmation.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Certify dialog */}
+      <Dialog open={certifyDialog.open} onOpenChange={(o) => { if (!o) setCertifyDialog({ open: false, room: null, status: "passed" }); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className={certifyDialog.status === "passed" ? "text-emerald-700" : "text-red-700"}>
+              {certifyDialog.status === "passed" ? "✅ Mark as Passed" : "❌ Mark as Failed"} — {certifyDialog.room?.roomType}
+            </DialogTitle>
+            <DialogDescription>
+              {certifyDialog.status === "passed"
+                ? "Confirm that Hostezee, AioSell, and OTA availability all match for this room type."
+                : "Record a certification failure. Add notes explaining the mismatch."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {certifyDialog.room && (
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded border bg-muted/30 px-3 py-2 text-center">
+                  <p className="font-bold">{certifyDialog.room.lastPushed?.available ?? "—"}</p>
+                  <p className="text-muted-foreground">Last pushed to AioSell</p>
+                </div>
+                <div className="rounded border bg-muted/30 px-3 py-2 text-center">
+                  <p className={`font-bold ${certifyDialog.room.otaStatus === "open" ? "text-emerald-600" : "text-red-600"}`}>
+                    {certifyDialog.room.otaStatus === "open" ? "Open" : "Closed"}
+                  </p>
+                  <p className="text-muted-foreground">Current status</p>
+                </div>
+              </div>
+            )}
+            <div className="space-y-1">
+              <Label className="text-xs">Notes (optional)</Label>
+              <textarea
+                className="w-full rounded-md border bg-background text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring min-h-[60px] resize-none"
+                placeholder={certifyDialog.status === "passed" ? "e.g., All values matched. Booking.com showing 1 available." : "e.g., Booking.com showing 0 but AioSell shows 1. Investigate..."}
+                value={certNotes}
+                onChange={e => setCertNotes(e.target.value)}
+                data-testid="input-cert-notes"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setCertifyDialog({ open: false, room: null, status: "passed" })}>Cancel</Button>
+            <Button
+              className={certifyDialog.status === "passed" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-red-600 hover:bg-red-700 text-white"}
+              onClick={() => {
+                if (!certifyDialog.room) return;
+                certifyMutation.mutate({
+                  roomMappingId: certifyDialog.room.roomMappingId,
+                  status: certifyDialog.status,
+                  notes: certNotes,
+                  hostezeeCalc: null,
+                  lastPushed: certifyDialog.room.lastPushed?.available ?? null,
+                  mismatch: certifyDialog.status === "failed",
+                });
+              }}
+              disabled={certifyMutation.isPending}
+              data-testid="button-confirm-certify"
+            >
+              {certifyMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {certifyDialog.status === "passed" ? "Confirm: Passed" : "Confirm: Failed"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 function EmergencyStopBanner({ propertyId }: { propertyId: number }) {
   const { toast } = useToast();
   const [showActivateDialog, setShowActivateDialog] = useState(false);
@@ -4540,6 +4978,7 @@ export default function ChannelManager() {
             <TabsTrigger value="reconciliation" data-testid="tab-reconciliation" className="flex-shrink-0 text-teal-700 dark:text-teal-400 gap-1"><Scale className="h-3.5 w-3.5" />Reconciliation</TabsTrigger>
             <TabsTrigger value="inventory-verification" data-testid="tab-inventory-verification" className="flex-shrink-0 text-teal-700 dark:text-teal-400 gap-1"><BarChart2 className="h-3.5 w-3.5" />Inv. Verification</TabsTrigger>
             <TabsTrigger value="ai-investigator" data-testid="tab-ai-investigator" className="flex-shrink-0 text-violet-700 dark:text-violet-400 gap-1"><Bot className="h-3.5 w-3.5" />AI Investigator</TabsTrigger>
+            <TabsTrigger value="room-control" data-testid="tab-room-control" className="flex-shrink-0 text-blue-700 dark:text-blue-400 gap-1"><ShieldCheck className="h-3.5 w-3.5" />Room Control</TabsTrigger>
           </TabsList>
           <TabsContent value="settings"><SettingsTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="room-mapping"><RoomMappingTab propertyId={propertyId} /></TabsContent>
@@ -4554,6 +4993,7 @@ export default function ChannelManager() {
           <TabsContent value="reconciliation"><InventoryReconciliationTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="inventory-verification"><InventoryVerificationTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="ai-investigator"><AIInvestigatorTab propertyId={propertyId} /></TabsContent>
+          <TabsContent value="room-control"><RoomControlTab propertyId={propertyId} /></TabsContent>
         </Tabs>
         </>
       )}

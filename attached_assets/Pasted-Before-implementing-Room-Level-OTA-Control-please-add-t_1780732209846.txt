@@ -1,0 +1,100 @@
+Before implementing Room-Level OTA Control, please add the following mandatory safety and certification requirements.
+
+CERTIFICATION MODE
+
+For each room type display:
+
+* Hostezee Calendar Availability
+* Hostezee Calculated Availability
+* Last Inventory Payload Sent
+* Aiosell Availability
+* Last Sync Time
+* Sync Status
+
+Status Rules:
+
+🟢 Verified
+Hostezee Calendar = Calculated Availability = Payload Sent = Aiosell Availability
+
+🔴 Mismatch
+Any value differs
+
+A room type cannot be marked as Certified unless all values match.
+
+CERTIFICATION WORKFLOW
+
+1. Open only one room type.
+2. Force Sync.
+3. Verify:
+
+   * Hostezee Calendar
+   * Calculated Availability
+   * Payload Sent
+   * Aiosell Availability
+4. If all values match:
+
+   * Mark as Certified.
+5. If values do not match:
+
+   * Mark as Failed.
+6. Close the room again if required.
+7. Move to the next room type.
+
+CERTIFICATION HISTORY
+
+Store:
+
+* Room Type
+* Certification Status
+* User
+* Date/Time
+* Notes
+
+ROOM CONTROL SAFETY
+
+When Emergency Stop is active:
+
+* Only selected room types may be opened.
+* All other room types must remain stop-sold.
+* Opening one room type must never reopen other room types.
+* Opening one room type must survive:
+
+  * Force Sync
+  * Health Job Sync
+  * Server Restart
+  * Manual Inventory Push
+
+MANUAL INVENTORY PUSH PROTECTION
+
+Current gap identified:
+
+Manual Push Inventory bypasses restriction re-application.
+
+Required fix:
+
+Whenever Emergency Stop or Room-Level OTA Control is active:
+
+* Manual Push Inventory must automatically re-apply all active restrictions immediately after the push.
+* OTA sales must never reopen accidentally.
+* If re-application fails:
+
+  * Show an error.
+  * Log the failure.
+  * Keep room status unchanged.
+
+AUDIT LOGGING
+
+Log all actions:
+
+* Room Opened
+* Room Closed
+* Emergency Stop Enabled
+* Emergency Stop Disabled
+* Certification Passed
+* Certification Failed
+* Inventory Push
+* Force Sync
+
+FINAL GOAL
+
+I want to safely test one room type at a time, verify that Hostezee Calendar, Inventory Calculation, Payload Sent, and Aiosell Availability are all synchronized, certify the room type, and only then reopen OTA sales for the entire property.
