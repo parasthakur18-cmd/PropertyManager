@@ -1,0 +1,217 @@
+HOSTEZEE SYSTEM STABILIZATION & BUG PRIORITIZATION REPORT
+
+IMPORTANT:
+
+DO NOT MODIFY CODE.
+DO NOT DEPLOY.
+DO NOT CREATE FIXES.
+
+Your task is to review the complete audit report and prepare a professional stabilization plan.
+
+====================================================
+PHASE 1 - MASTER ISSUE REGISTER
+===============================
+
+Collect every issue discovered during the audit.
+
+For each issue provide:
+
+Issue ID
+Module
+File Name
+Function Name
+Description
+Root Cause
+Severity
+Business Impact
+Risk Level
+
+Classify as:
+
+CRITICAL
+HIGH
+MEDIUM
+LOW
+
+====================================================
+PHASE 2 - REVENUE IMPACT ANALYSIS
+=================================
+
+Identify all issues that can affect:
+
+* Room Charges
+* Night Calculations
+* GST
+* Discounts
+* Advance Payments
+* Balance Due
+* Merged Checkout
+* Invoice Generation
+
+For each issue estimate:
+
+Revenue Loss Risk
+Guest Dispute Risk
+Financial Reporting Risk
+
+====================================================
+PHASE 3 - INVENTORY RISK ANALYSIS
+=================================
+
+Identify all issues that can affect:
+
+* Room Availability
+* Room Blocking
+* Room Release
+* Booking Modification
+* Booking Cancellation
+* Walk-In Bookings
+* Maintenance Blocks
+
+Classify:
+
+No Risk
+Low Risk
+Medium Risk
+High Risk
+Critical Risk
+
+====================================================
+PHASE 4 - OTA SYNC RISK ANALYSIS
+================================
+
+Identify all issues that can cause:
+
+* Overbooking
+* Underbooking
+* Wrong Inventory Push
+* Wrong Inventory Pull
+* Wrong Availability
+* Wrong Rate Push
+* Failed Sync
+
+For every issue explain:
+
+Cause
+Affected OTA
+Potential Consequence
+
+====================================================
+PHASE 5 - DUPLICATE LOGIC ANALYSIS
+==================================
+
+List all duplicate implementations of:
+
+* Night Calculations
+* Billing Calculations
+* GST Calculations
+* Inventory Calculations
+* Checkout Calculations
+
+Show:
+
+Primary Source
+Duplicate Source
+Recommendation
+
+====================================================
+PHASE 6 - SINGLE SOURCE OF TRUTH ANALYSIS
+=========================================
+
+Determine:
+
+What should be the single source of truth for:
+
+1. Nights
+2. Room Charges
+3. Inventory
+4. OTA Availability
+5. Checkout Totals
+6. GST
+7. Revenue Reporting
+
+Identify every location that currently violates this principle.
+
+====================================================
+PHASE 7 - TEST CASE MATRIX
+==========================
+
+Generate a comprehensive test matrix.
+
+Include:
+
+1 Night Booking
+2 Night Booking
+3 Night Booking
+Same Day Booking
+Walk-In Booking
+OTA Booking
+OTA Cancellation
+Booking Modification
+Room Transfer
+Merged Checkout
+Split Checkout
+Food + Room Billing
+Advance Payment
+Partial Payment
+Multiple Rooms
+Maintenance Block
+
+For each test case provide:
+
+Expected Result
+Potential Failure Points
+Files Involved
+
+====================================================
+PHASE 8 - FIX ROADMAP
+=====================
+
+DO NOT IMPLEMENT FIXES.
+
+Provide:
+
+Phase A:
+Revenue Protection Issues
+
+Phase B:
+Inventory Protection Issues
+
+Phase C:
+OTA Protection Issues
+
+Phase D:
+Reporting Accuracy Issues
+
+Phase E:
+UI Consistency Issues
+
+Rank every issue by priority.
+
+====================================================
+PHASE 9 - EXECUTIVE SUMMARY
+===========================
+
+Generate a final management report.
+
+Include:
+
+Total Issues Found
+Critical Issues
+High Issues
+Medium Issues
+Low Issues
+
+Most Dangerous Billing Issue
+Most Dangerous Inventory Issue
+Most Dangerous OTA Issue
+
+Top 10 Issues To Fix First
+
+Again:
+
+DO NOT CHANGE CODE.
+DO NOT CREATE PULL REQUESTS.
+DO NOT DEPLOY.
+
+Only generate a complete stabilization and prioritization report.
