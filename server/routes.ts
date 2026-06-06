@@ -21531,12 +21531,14 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       const mapping = mappings.find(m => m.id === roomMappingId);
       if (!mapping) return res.status(404).json({ message: "Room mapping not found" });
 
-      // Run a full property inventory sync — this correctly pushes the actual available
-      // count for the opened room and 0 (with stop-sell still active) for all others.
-      await autoSyncInventoryForProperty(propertyId);
+      // Run a full property inventory sync in the background so we can respond to the
+      // client immediately (avoids nginx 504 timeouts on slow AioSell API responses).
+      autoSyncInventoryForProperty(propertyId).catch((e: Error) =>
+        console.error(`[ROOM-CONTROL] Background push error for property ${propertyId}:`, e.message)
+      );
 
-      console.log(`[ROOM-CONTROL] Single-room inventory push triggered for ${mapping.aiosellRoomCode} (property ${propertyId})`);
-      res.json({ success: true, roomCode: mapping.aiosellRoomCode, roomType: mapping.hostezeeRoomType, message: `Inventory pushed for ${mapping.hostezeeRoomType}` });
+      console.log(`[ROOM-CONTROL] Single-room inventory push started (background) for ${mapping.aiosellRoomCode} (property ${propertyId})`);
+      res.json({ success: true, roomCode: mapping.aiosellRoomCode, roomType: mapping.hostezeeRoomType, message: `Inventory push started for ${mapping.hostezeeRoomType}` });
     } catch (error: any) {
       console.error("[ROOM-CONTROL] push-single-room error:", error.message);
       res.status(500).json({ message: error.message });

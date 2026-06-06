@@ -4282,12 +4282,15 @@ function RoomControlTab({ propertyId }: { propertyId: number }) {
       return res.json();
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/room-control/status", propertyId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/sync-logs"] });
       toast({
-        title: `📤 Inventory pushed — ${data.roomType}`,
-        description: "Live count sent to AioSell. Check Inv. Verification to confirm.",
+        title: `📤 Inventory push started — ${data.roomType}`,
+        description: "Sending to AioSell in background. Results will refresh in ~15s.",
       });
+      // Sync runs in background on the server — wait before refreshing so results are ready
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/aiosell/room-control/status", propertyId] });
+        queryClient.invalidateQueries({ queryKey: ["/api/aiosell/sync-logs"] });
+      }, 15000);
     },
     onError: (err: any) => toast({ title: "Push failed", description: err.message, variant: "destructive" }),
   });
