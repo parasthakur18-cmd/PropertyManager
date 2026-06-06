@@ -21896,8 +21896,10 @@ Respond ONLY with valid JSON (no markdown, no extra text):
       const cached = invReconCache.get(cacheKey);
       if (cached && cached.expiry > Date.now()) return res.json({ ...cached.result, fromCache: true });
 
-      const date = new Date(dateStr); date.setHours(0, 0, 0, 0);
-      const nextDay = new Date(date); nextDay.setDate(date.getDate() + 1);
+      const dateObj = new Date(dateStr + "T00:00:00");
+      const nextDay = new Date(dateStr + "T00:00:00");
+      nextDay.setDate(nextDay.getDate() + 1);
+      const nextDayStr = nextDay.toISOString().split("T")[0];
 
       const [allRooms, dayBookings] = await Promise.all([
         db.select({
@@ -21906,40 +21908,53 @@ Respond ONLY with valid JSON (no markdown, no extra text):
         }).from(rooms).where(eq(rooms.propertyId, propertyId)),
         db.select({
           id: bookings.id, roomId: bookings.roomId, roomIds: bookings.roomIds,
-          roomType: bookings.roomType, source: bookings.source,
+          source: bookings.source,
           externalSource: bookings.externalSource, travelAgentId: bookings.travelAgentId,
           bedsBooked: bookings.bedsBooked, numberOfGuests: bookings.numberOfGuests,
           checkInDate: bookings.checkInDate, checkOutDate: bookings.checkOutDate, status: bookings.status,
         }).from(bookings).where(and(
           eq(bookings.propertyId, propertyId),
           inArray(bookings.status, ["pending", "confirmed", "checked-in"]),
-          lte(bookings.checkInDate, nextDay),
-          gte(bookings.checkOutDate, date),
+          lte(bookings.checkInDate, nextDayStr),
+          gte(bookings.checkOutDate, dateStr),
         )),
       ]);
 
       const activeDayBookings = dayBookings.filter(b => {
-        const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
-        const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
-        return cin <= date && date < cout;
+        const cinStr = typeof b.checkInDate === "string" ? b.checkInDate : (b.checkInDate as any)?.toISOString?.()?.split?.("T")?.[0] ?? "";
+        const coutStr = typeof b.checkOutDate === "string" ? b.checkOutDate : (b.checkOutDate as any)?.toISOString?.()?.split?.("T")?.[0] ?? "";
+        return cinStr <= dateStr && dateStr < coutStr;
       });
 
       const roomById = new Map(allRooms.map(r => [r.id, r]));
 
       const bookingIds = activeDayBookings.map(b => b.id);
       let confirmedStays: { bookingId: number; roomId: number | null }[] = [];
+      let tbsStays: { bookingId: number; roomType: string | null }[] = [];
       if (bookingIds.length > 0) {
-        confirmedStays = await db.select({
-          bookingId: bookingRoomStays.bookingId, roomId: bookingRoomStays.roomId,
-        }).from(bookingRoomStays).where(and(
-          inArray(bookingRoomStays.bookingId, bookingIds), isNotNull(bookingRoomStays.roomId),
-        ));
+        [confirmedStays, tbsStays] = await Promise.all([
+          db.select({
+            bookingId: bookingRoomStays.bookingId, roomId: bookingRoomStays.roomId,
+          }).from(bookingRoomStays).where(and(
+            inArray(bookingRoomStays.bookingId, bookingIds), isNotNull(bookingRoomStays.roomId),
+          )),
+          db.select({
+            bookingId: bookingRoomStays.bookingId, roomType: bookingRoomStays.roomType,
+          }).from(bookingRoomStays).where(and(
+            inArray(bookingRoomStays.bookingId, bookingIds), isNull(bookingRoomStays.roomId),
+          )),
+        ]);
       }
       const staysByBookingId = new Map<number, number[]>();
       for (const s of confirmedStays) {
         if (s.roomId == null) continue;
         if (!staysByBookingId.has(s.bookingId)) staysByBookingId.set(s.bookingId, []);
         staysByBookingId.get(s.bookingId)!.push(s.roomId);
+      }
+      // room type for TBS (unassigned) stays — used as fallback when no rooms assigned
+      const tbsRoomTypeByBookingId = new Map<number, string>();
+      for (const s of tbsStays) {
+        if (s.roomType && !tbsRoomTypeByBookingId.has(s.bookingId)) tbsRoomTypeByBookingId.set(s.bookingId, s.roomType);
       }
 
       const roomTypeGroups = new Map<string, (typeof allRooms)[number][]>();
@@ -21956,7 +21971,8 @@ Respond ONLY with valid JSON (no markdown, no extra text):
         const hasTa = !!b.travelAgentId;
         const assignedRoomIds: number[] = [];
         if (b.roomId) assignedRoomIds.push(b.roomId);
-        if (b.roomIds) for (const rid of b.roomIds) if (!assignedRoomIds.includes(rid)) assignedRoomIds.push(rid);
+        const rIds = Array.isArray(b.roomIds) ? b.roomIds : [];
+        for (const rid of rIds) if (!assignedRoomIds.includes(rid)) assignedRoomIds.push(rid);
         for (const rid of (staysByBookingId.get(b.id) || [])) if (!assignedRoomIds.includes(rid)) assignedRoomIds.push(rid);
 
         if (assignedRoomIds.length > 0) {
@@ -21971,9 +21987,12 @@ Respond ONLY with valid JSON (no markdown, no extra text):
               if (!counted.has(key)) { counted.add(key); slots.push({ roomType: room.roomType, source: src, hasTa, beds: 1 }); }
             }
           }
-        } else if (b.roomType) {
-          const isDorm = (roomTypeGroups.get(b.roomType) || []).some(r => r.roomCategory === "dormitory");
-          slots.push({ roomType: b.roomType, source: src, hasTa, beds: isDorm ? (b.bedsBooked || b.numberOfGuests || 1) : 1 });
+        } else {
+          const fallbackRoomType = tbsRoomTypeByBookingId.get(b.id);
+          if (fallbackRoomType) {
+            const isDorm = (roomTypeGroups.get(fallbackRoomType) || []).some(r => r.roomCategory === "dormitory");
+            slots.push({ roomType: fallbackRoomType, source: src, hasTa, beds: isDorm ? (b.bedsBooked || b.numberOfGuests || 1) : 1 });
+          }
         }
       }
 
@@ -22020,7 +22039,7 @@ Respond ONLY with valid JSON (no markdown, no extra text):
       console.log(`[INV-RECON] prop=${propertyId} date=${dateStr} rooms=${reconciliation.length} fails=${failCount} status=${overallStatus}`);
       res.json(result);
     } catch (err: any) {
-      console.error("[INV-RECON]", err.message);
+      console.error("[INV-RECON]", err.message, err.stack);
       res.status(500).json({ message: err.message });
     }
   });
@@ -22047,8 +22066,10 @@ Respond ONLY with valid JSON (no markdown, no extra text):
       if (!question) return res.status(400).json({ message: "question is required" });
       if (!canAccessProperty(tenant, propertyId)) return res.status(403).json({ message: "Access denied" });
 
-      const dateObj = new Date(dateStr); dateObj.setHours(0, 0, 0, 0);
-      const nextDay = new Date(dateObj); nextDay.setDate(dateObj.getDate() + 1);
+      const dateObj = new Date(dateStr + "T00:00:00");
+      const nextDay = new Date(dateStr + "T00:00:00");
+      nextDay.setDate(nextDay.getDate() + 1);
+      const nextDayStr = nextDay.toISOString().split("T")[0];
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       const oneHourAgo  = new Date(Date.now() - 60 * 60 * 1000);
 
@@ -22075,13 +22096,13 @@ Respond ONLY with valid JSON (no markdown, no extra text):
           .from(rooms)
           .where(and(eq(rooms.propertyId, propertyId), inArray(rooms.status, ["maintenance", "out-of-order", "blocked"]))),
         db.select({
-          id: bookings.id, roomId: bookings.roomId, roomType: bookings.roomType,
+          id: bookings.id, roomId: bookings.roomId,
           source: bookings.source, externalSource: bookings.externalSource,
           checkInDate: bookings.checkInDate, checkOutDate: bookings.checkOutDate, status: bookings.status,
         }).from(bookings).where(and(
           eq(bookings.propertyId, propertyId),
           inArray(bookings.status, ["pending", "confirmed", "checked-in"]),
-          lte(bookings.checkInDate, nextDay), gte(bookings.checkOutDate, dateObj),
+          lte(bookings.checkInDate, nextDayStr), gte(bookings.checkOutDate, dateStr),
         )),
         config ? getRoomMappingsForConfig(config.id) : Promise.resolve([] as any[]),
       ]);
@@ -22096,13 +22117,12 @@ Respond ONLY with valid JSON (no markdown, no extra text):
         : null;
 
       const activeDayBookings = dayBookings.filter((b: any) => {
-        const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
-        const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
-        return cin <= dateObj && dateObj < cout;
+        const cinStr = typeof b.checkInDate === "string" ? b.checkInDate : (b.checkInDate as any)?.toISOString?.()?.split?.("T")?.[0] ?? "";
+        const coutStr = typeof b.checkOutDate === "string" ? b.checkOutDate : (b.checkOutDate as any)?.toISOString?.()?.split?.("T")?.[0] ?? "";
+        return cinStr <= dateStr && dateStr < coutStr;
       });
-      const roomFilteredBookings = roomType
-        ? activeDayBookings.filter((b: any) => b.roomType === roomType || !b.roomType)
-        : activeDayBookings;
+      // bookings.room_type column does not exist in DB; include all active bookings when filtering by roomType
+      const roomFilteredBookings = activeDayBookings;
       const otaBookings     = roomFilteredBookings.filter((b: any) => _classifySource(b.externalSource || b.source) === "ota");
       const offlineBookings = roomFilteredBookings.filter((b: any) => _classifySource(b.externalSource || b.source) === "offline");
 
@@ -22133,7 +22153,7 @@ Respond ONLY with valid JSON (no markdown, no extra text):
           failures:    failedLogs.length,
           successes:   successLogs.length,
           errorRate:   recentLogs.length > 0 ? Math.round((failedLogs.length / recentLogs.length) * 100) : 0,
-          lastFailureMsg,
+          lastFailureMsg: lastFailMsg,
           lastSuccessAt:  successLogs[0]?.createdAt  || null,
           lastFailureAt:  failedLogs[0]?.createdAt   || null,
         },
