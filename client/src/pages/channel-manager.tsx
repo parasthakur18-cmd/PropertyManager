@@ -9,7 +9,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type Property } from "@shared/schema";
-import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronDown, ChevronLeft, ChevronRight, IndianRupee, MessageSquare, Send, Phone, ShieldCheck, ChevronUp, FileDown, BrainCircuit, Sparkles, Copy, Package, BarChart2, Scale, XCircle, Bot, Zap, BadgeCheck, OctagonX, PlayCircle } from "lucide-react";
+import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronDown, ChevronLeft, ChevronRight, IndianRupee, MessageSquare, Send, Phone, ShieldCheck, ChevronUp, FileDown, BrainCircuit, Sparkles, Copy, Package, BarChart2, Scale, XCircle, Bot, Zap, BadgeCheck, OctagonX, PlayCircle, Upload } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -4276,7 +4276,23 @@ function RoomControlTab({ propertyId }: { propertyId: number }) {
     onError: (err: any) => toast({ title: "Certification failed", description: err.message, variant: "destructive" }),
   });
 
-  const isBusy = (id: number) => openMutation.isPending || closeMutation.isPending;
+  const pushSingleRoomMutation = useMutation({
+    mutationFn: async (roomMappingId: number) => {
+      const res = await apiRequest("/api/aiosell/room-control/push-single-room", "POST", { propertyId, roomMappingId });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/room-control/status", propertyId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/sync-logs"] });
+      toast({
+        title: `📤 Inventory pushed — ${data.roomType}`,
+        description: "Live count sent to AioSell. Check Inv. Verification to confirm.",
+      });
+    },
+    onError: (err: any) => toast({ title: "Push failed", description: err.message, variant: "destructive" }),
+  });
+
+  const isBusy = (id: number) => openMutation.isPending || closeMutation.isPending || pushSingleRoomMutation.isPending;
 
   if (isLoading) return (
     <div className="flex items-center justify-center py-16">
@@ -4376,16 +4392,29 @@ function RoomControlTab({ propertyId }: { propertyId: number }) {
                   <div className="flex items-center gap-2 shrink-0">
                     {data.emergencyStopActive && (
                       isOpen ? (
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => closeMutation.mutate(room.roomMappingId)}
-                          disabled={isBusy(room.roomMappingId) || closeMutation.isPending}
-                          data-testid={`button-close-room-${room.roomCode}`}
-                        >
-                          {closeMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <OctagonX className="h-3.5 w-3.5" />}
-                          Close Room
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950/30"
+                            onClick={() => pushSingleRoomMutation.mutate(room.roomMappingId)}
+                            disabled={isBusy(room.roomMappingId)}
+                            data-testid={`button-push-inventory-${room.roomCode}`}
+                          >
+                            {pushSingleRoomMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                            Push Inventory
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => closeMutation.mutate(room.roomMappingId)}
+                            disabled={isBusy(room.roomMappingId)}
+                            data-testid={`button-close-room-${room.roomCode}`}
+                          >
+                            {closeMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <OctagonX className="h-3.5 w-3.5" />}
+                            Close Room
+                          </Button>
+                        </>
                       ) : (
                         <Button
                           size="sm"

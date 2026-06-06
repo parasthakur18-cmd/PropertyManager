@@ -21443,6 +21443,37 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
     }
   });
 
+  // POST /api/aiosell/room-control/push-single-room
+  // Triggers a full inventory sync for the property (which pushes actual count for the
+  // opened room and 0/stop-sell for still-closed rooms) and returns the result.
+  app.post("/api/aiosell/room-control/push-single-room", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const { propertyId, roomMappingId } = req.body;
+      if (!propertyId || !canAccessProperty(tenant, propertyId))
+        return res.status(403).json({ message: "Access denied" });
+
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "AioSell not configured" });
+
+      const mappings = await getRoomMappingsForConfig(config.id);
+      const mapping = mappings.find(m => m.id === roomMappingId);
+      if (!mapping) return res.status(404).json({ message: "Room mapping not found" });
+
+      // Run a full property inventory sync — this correctly pushes the actual available
+      // count for the opened room and 0 (with stop-sell still active) for all others.
+      await autoSyncInventoryForProperty(propertyId);
+
+      console.log(`[ROOM-CONTROL] Single-room inventory push triggered for ${mapping.aiosellRoomCode} (property ${propertyId})`);
+      res.json({ success: true, roomCode: mapping.aiosellRoomCode, roomType: mapping.hostezeeRoomType, message: `Inventory pushed for ${mapping.hostezeeRoomType}` });
+    } catch (error: any) {
+      console.error("[ROOM-CONTROL] push-single-room error:", error.message);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/aiosell/sync-logs", isAuthenticated, async (req: any, res) => {
     try {
       const auth = await getAuthenticatedTenant(req);
