@@ -23908,6 +23908,184 @@ Respond ONLY with valid JSON (no markdown, no extra text):
     }
   });
 
+  // ── Force-Sync vs Room-Calendar Debug Endpoint ──────────────────────────────
+
+  /**
+   * GET /api/aiosell/sync-debug?propertyId=X&roomCode=Y&date=YYYY-MM-DD
+   * Side-by-side breakdown of Force Sync vs Room Calendar for a specific room
+   * type and date. Shows exactly which booking IDs each engine counts and why
+   * they differ.
+   */
+  app.get("/api/aiosell/sync-debug", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || !canAccessProperty(tenant, propertyId))
+        return res.status(403).json({ message: "Access denied" });
+
+      const roomCode = (req.query.roomCode as string || "").trim();
+      const dateStr = (req.query.date as string || new Date().toISOString().split("T")[0]).trim();
+      if (!roomCode) return res.status(400).json({ message: "roomCode is required" });
+
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "AioSell not configured" });
+
+      const mappings = await getRoomMappingsForConfig(config.id);
+      const mapping = mappings.find(m => m.aiosellRoomCode === roomCode);
+      if (!mapping) return res.status(404).json({ message: `No mapping found for roomCode: ${roomCode}` });
+
+      const normRT2 = (s: string) => (s || "").toLowerCase().replace(/[-_\s]+/g, "").trim();
+      const allRooms = await db.select().from(rooms).where(eq(rooms.propertyId, propertyId));
+      const matchingRooms = allRooms.filter(r => normRT2(r.roomType || "") === normRT2(mapping.hostezeeRoomType));
+      const blockedRoomIds = new Set(matchingRooms.filter(r => ["maintenance", "out-of-order", "blocked"].includes(r.status || "")).map(r => r.id));
+      const activeRoomIds = matchingRooms.map(r => r.id).filter(id => !blockedRoomIds.has(id));
+
+      const targetDate = new Date(dateStr); targetDate.setHours(0, 0, 0, 0);
+      const dayAfter = new Date(targetDate); dayAfter.setDate(dayAfter.getDate() + 1);
+
+      // Fetch all active bookings overlapping this date
+      const activeBookingsRaw = await db.select({
+        id: bookings.id, roomId: bookings.roomId, roomIds: bookings.roomIds,
+        checkInDate: bookings.checkInDate, checkOutDate: bookings.checkOutDate,
+        status: bookings.status, source: bookings.source, bedsBooked: bookings.bedsBooked,
+        numberOfGuests: bookings.numberOfGuests,
+      }).from(bookings).where(and(
+        eq(bookings.propertyId, propertyId),
+        inArray(bookings.status, ["pending", "confirmed", "checked-in"]),
+        lte(bookings.checkInDate, dayAfter),
+        gte(bookings.checkOutDate, targetDate),
+      ));
+
+      const isAiosellSrc = (src: string | null | undefined) => !!(src && src.startsWith("aiosell-"));
+
+      // directBookings = Force Sync filter
+      const directBookings = activeBookingsRaw.filter(b => b.status === "checked-in" || !isAiosellSrc(b.source));
+      const aiosellExcluded = activeBookingsRaw.filter(b => isAiosellSrc(b.source) && b.status !== "checked-in");
+
+      const activeBookingIds = activeBookingsRaw.map(b => b.id);
+      const tbsStaysByBookingId = new Map<number, { aiosellRoomCode: string }[]>();
+      const confirmedStayRoomIdsByBookingId = new Map<number, number[]>();
+
+      if (activeBookingIds.length > 0) {
+        const tbsStays = await db.select({ bookingId: bookingRoomStays.bookingId, aiosellRoomCode: bookingRoomStays.aiosellRoomCode })
+          .from(bookingRoomStays).where(and(inArray(bookingRoomStays.bookingId, activeBookingIds), isNull(bookingRoomStays.roomId)));
+        for (const stay of tbsStays) {
+          if (!stay.aiosellRoomCode) continue;
+          if (!tbsStaysByBookingId.has(stay.bookingId)) tbsStaysByBookingId.set(stay.bookingId, []);
+          tbsStaysByBookingId.get(stay.bookingId)!.push({ aiosellRoomCode: stay.aiosellRoomCode });
+        }
+        const confirmedStays = await db.select({ bookingId: bookingRoomStays.bookingId, roomId: bookingRoomStays.roomId })
+          .from(bookingRoomStays).where(and(inArray(bookingRoomStays.bookingId, activeBookingIds), isNotNull(bookingRoomStays.roomId)));
+        for (const stay of confirmedStays) {
+          if (stay.roomId == null) continue;
+          if (!confirmedStayRoomIdsByBookingId.has(stay.bookingId)) confirmedStayRoomIdsByBookingId.set(stay.bookingId, []);
+          confirmedStayRoomIdsByBookingId.get(stay.bookingId)!.push(stay.roomId);
+        }
+      }
+
+      // ── Force Sync calculation ──────────────────────────────────────────────
+      const forceSyncBookedRoomIds = new Set<number>();
+      let forceSyncTbsCount = 0;
+      const forceSyncDetailedBookings: any[] = [];
+
+      for (const b of directBookings) {
+        const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
+        const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
+        if (!(cin <= targetDate && targetDate < cout)) continue;
+
+        const roomFromId = b.roomId && activeRoomIds.includes(b.roomId) ? [b.roomId] : [];
+        const roomFromIds = (b.roomIds || []).filter(rid => activeRoomIds.includes(rid));
+        const stayRooms = (confirmedStayRoomIdsByBookingId.get(b.id) || []).filter(rid => activeRoomIds.includes(rid));
+        const tbsStaysForThis = (tbsStaysByBookingId.get(b.id) || []).filter(s => s.aiosellRoomCode === roomCode);
+        const allCountedRooms = [...new Set([...roomFromId, ...roomFromIds, ...stayRooms])];
+        allCountedRooms.forEach(rid => forceSyncBookedRoomIds.add(rid));
+        forceSyncTbsCount += tbsStaysForThis.length;
+
+        if (allCountedRooms.length > 0 || tbsStaysForThis.length > 0) {
+          forceSyncDetailedBookings.push({
+            id: b.id, status: b.status, source: b.source || null,
+            checkIn: b.checkInDate, checkOut: b.checkOutDate,
+            roomId: b.roomId, roomIds: b.roomIds || [],
+            fromBookingRoomId: roomFromId, fromBookingRoomIds: roomFromIds, fromStayRows: stayRooms,
+            tbsStayCount: tbsStaysForThis.length,
+          });
+        }
+      }
+
+      const forceSyncPhysAvail = activeRoomIds.filter(id => !forceSyncBookedRoomIds.has(id)).length;
+      const forceSyncAvailable = Math.max(0, forceSyncPhysAvail - forceSyncTbsCount);
+
+      // ── Room Calendar calculation ───────────────────────────────────────────
+      // Room Calendar: getBookingForDate(roomId, date) checks booking.roomId === roomId OR booking.roomIds.includes(roomId)
+      // It uses ALL bookings (pending+confirmed+checked-in), no source filter
+      const roomCalendarBookedRoomIds = new Set<number>();
+      const roomCalendarDetailedBookings: any[] = [];
+      const allNonCancelledBookings = await db.select({
+        id: bookings.id, roomId: bookings.roomId, roomIds: bookings.roomIds,
+        checkInDate: bookings.checkInDate, checkOutDate: bookings.checkOutDate,
+        status: bookings.status, source: bookings.source,
+      }).from(bookings).where(and(
+        eq(bookings.propertyId, propertyId),
+        not(inArray(bookings.status, ["cancelled", "checked-out", "no_show"])),
+        lte(bookings.checkInDate, dayAfter), gte(bookings.checkOutDate, targetDate),
+      ));
+
+      for (const b of allNonCancelledBookings) {
+        const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
+        const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
+        if (!(cin <= targetDate && targetDate < cout)) continue;
+        const matchedRooms: number[] = [];
+        for (const roomId of activeRoomIds) {
+          const isGroup = (b.roomIds && b.roomIds.length > 0);
+          const roomMatches = isGroup ? (b.roomIds || []).includes(roomId) : (b.roomId === roomId || (b.roomIds || []).includes(roomId));
+          if (roomMatches) { matchedRooms.push(roomId); roomCalendarBookedRoomIds.add(roomId); }
+        }
+        if (matchedRooms.length > 0) {
+          roomCalendarDetailedBookings.push({ id: b.id, status: b.status, source: b.source || null, checkIn: b.checkInDate, checkOut: b.checkOutDate, roomId: b.roomId, roomIds: b.roomIds || [], matchedActiveRooms: matchedRooms });
+        }
+      }
+      const roomCalendarAvailable = activeRoomIds.filter(id => !roomCalendarBookedRoomIds.has(id)).length;
+
+      // ── Diff: what Force Sync counts that Room Calendar doesn't ────────────
+      const onlyInForceSync = forceSyncDetailedBookings.filter(fb =>
+        !roomCalendarDetailedBookings.some(rb => rb.id === fb.id)
+      );
+      const onlyInRoomCalendar = roomCalendarDetailedBookings.filter(rb =>
+        !forceSyncDetailedBookings.some(fb => fb.id === rb.id)
+      );
+
+      return res.json({
+        roomCode, date: dateStr, hostezeeRoomType: mapping.hostezeeRoomType,
+        totalRooms: matchingRooms.length,
+        activeRooms: activeRoomIds.map(id => ({ id, roomNumber: matchingRooms.find(r => r.id === id)?.roomNumber })),
+        blockedRooms: [...blockedRoomIds].map(id => ({ id, roomNumber: matchingRooms.find(r => r.id === id)?.roomNumber })),
+        forceSync: {
+          available: forceSyncAvailable, physicallyAvailable: forceSyncPhysAvail, tbsCount: forceSyncTbsCount,
+          bookedRoomIds: [...forceSyncBookedRoomIds],
+          aiosellExcludedBookingIds: aiosellExcluded.map(b => ({ id: b.id, status: b.status, source: b.source })),
+          countedBookings: forceSyncDetailedBookings,
+        },
+        roomCalendar: {
+          available: roomCalendarAvailable, bookedRoomIds: [...roomCalendarBookedRoomIds],
+          countedBookings: roomCalendarDetailedBookings,
+        },
+        diff: {
+          countedByForceSyncOnly: onlyInForceSync,
+          countedByRoomCalendarOnly: onlyInRoomCalendar,
+          tbsCountOnlyInForceSync: forceSyncTbsCount,
+          summary: forceSyncAvailable === roomCalendarAvailable
+            ? "MATCH — both engines agree"
+            : `MISMATCH — Force Sync=${forceSyncAvailable}, Room Calendar=${roomCalendarAvailable}, gap=${roomCalendarAvailable - forceSyncAvailable}`,
+        },
+      });
+    } catch (err: any) {
+      console.error("[sync-debug] Error:", err);
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
   // ── Inventory Calculation Verification ──────────────────────────────────────
 
   /**
