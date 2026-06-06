@@ -1283,6 +1283,21 @@ async function migrateMessageTemplatesPropertyId(): Promise<void> {
   }
 }
 
+async function addAiosellEmergencyStop(): Promise<void> {
+  if (!(await columnExists("aiosell_configurations", "emergency_stop_active"))) {
+    await runRaw(`ALTER TABLE aiosell_configurations ADD COLUMN emergency_stop_active BOOLEAN NOT NULL DEFAULT false`);
+  }
+  if (!(await columnExists("aiosell_configurations", "emergency_stop_activated_at"))) {
+    await runRaw(`ALTER TABLE aiosell_configurations ADD COLUMN emergency_stop_activated_at TIMESTAMP`);
+  }
+  if (!(await columnExists("aiosell_configurations", "emergency_stop_activated_by"))) {
+    await runRaw(`ALTER TABLE aiosell_configurations ADD COLUMN emergency_stop_activated_by VARCHAR(255)`);
+  }
+  if (!(await columnExists("aiosell_inventory_restrictions", "is_emergency_stop"))) {
+    await runRaw(`ALTER TABLE aiosell_inventory_restrictions ADD COLUMN is_emergency_stop BOOLEAN NOT NULL DEFAULT false`);
+  }
+}
+
 async function addMenuItemAllDayColumn(): Promise<void> {
   // Add the available_all_day column if it doesn't exist
   if (!(await columnExists("menu_items", "available_all_day"))) {
@@ -1342,6 +1357,12 @@ export async function runStartupMigrations(): Promise<void> {
     await migrateMessageTemplatesPropertyId();
   } catch (err: any) {
     console.warn(`[MIGRATE] message_templates property_id: ${err.message}`);
+  }
+
+  try {
+    await addAiosellEmergencyStop();
+  } catch (err: any) {
+    console.warn(`[MIGRATE] aiosell_emergency_stop: ${err.message}`);
   }
 }
 

@@ -46,7 +46,7 @@ interface RateUpdate {
   rates: { roomCode: string; roomId?: string | null; rate: number; rateplanCode: string }[];
 }
 
-interface InventoryRestrictionUpdate {
+export interface InventoryRestrictionUpdate {
   startDate: string;
   endDate: string;
   rooms: {

@@ -9,7 +9,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type Property } from "@shared/schema";
-import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronDown, ChevronLeft, ChevronRight, IndianRupee, MessageSquare, Send, Phone, ShieldCheck, ChevronUp, FileDown, BrainCircuit, Sparkles, Copy, Package, BarChart2, Scale, XCircle, Bot, Zap, BadgeCheck } from "lucide-react";
+import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronDown, ChevronLeft, ChevronRight, IndianRupee, MessageSquare, Send, Phone, ShieldCheck, ChevronUp, FileDown, BrainCircuit, Sparkles, Copy, Package, BarChart2, Scale, XCircle, Bot, Zap, BadgeCheck, OctagonX, PlayCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -28,8 +28,17 @@ interface AiosellConfig {
   isActive: boolean;
   isSandbox: boolean;
   lastSyncAt: string | null;
+  emergencyStopActive: boolean;
+  emergencyStopActivatedAt: string | null;
+  emergencyStopActivatedBy: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+interface EmergencyStopStatus {
+  active: boolean;
+  activatedAt: string | null;
+  activatedBy: string | null;
 }
 
 interface RoomMapping {
@@ -4144,6 +4153,178 @@ function AIAuditorTab({ propertyId }: { propertyId: number }) {
   );
 }
 
+function EmergencyStopBanner({ propertyId }: { propertyId: number }) {
+  const { toast } = useToast();
+  const [showActivateDialog, setShowActivateDialog] = useState(false);
+  const [showDeactivateDialog, setShowDeactivateDialog] = useState(false);
+
+  const { data: status, isLoading } = useQuery<EmergencyStopStatus>({
+    queryKey: ["/api/aiosell/emergency-stop", { propertyId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/aiosell/emergency-stop?propertyId=${propertyId}`, { credentials: "include" });
+      if (!res.ok) return { active: false, activatedAt: null, activatedBy: null };
+      return res.json();
+    },
+    enabled: !!propertyId,
+    refetchInterval: 30_000,
+  });
+
+  const activateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/aiosell/emergency-stop", { propertyId });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/emergency-stop", { propertyId }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/sync-logs"] });
+      setShowActivateDialog(false);
+      toast({
+        title: data.pushSuccess ? "⛔ Emergency Stop Activated" : "⚠️ Emergency Stop Activated (push failed)",
+        description: data.message,
+        variant: data.pushSuccess ? "default" : "destructive",
+      });
+    },
+    onError: (err: any) => {
+      setShowActivateDialog(false);
+      toast({ title: "Failed to activate emergency stop", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/aiosell/emergency-stop?propertyId=${propertyId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/emergency-stop", { propertyId }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/sync-logs"] });
+      setShowDeactivateDialog(false);
+      toast({
+        title: "✅ Sales Resumed",
+        description: data.message,
+      });
+    },
+    onError: (err: any) => {
+      setShowDeactivateDialog(false);
+      toast({ title: "Failed to resume sales", description: err.message, variant: "destructive" });
+    },
+  });
+
+  if (isLoading) return null;
+
+  return (
+    <>
+      {status?.active ? (
+        <div className="rounded-lg border-2 border-red-500 bg-red-50 dark:bg-red-950/30 p-4 flex flex-col sm:flex-row sm:items-center gap-3" data-testid="emergency-stop-banner-active">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <OctagonX className="h-6 w-6 text-red-600 dark:text-red-400 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="font-bold text-red-700 dark:text-red-300 text-sm">⛔ Emergency Stop Active — All OTA bookings paused</p>
+              <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                Activated by <span className="font-semibold">{status.activatedBy || "unknown"}</span>
+                {status.activatedAt && (
+                  <> on {format(parseISO(status.activatedAt), "dd MMM yyyy, h:mm a")}</>
+                )}
+                {" · "}Stop-sell pushed to all connected OTAs via AioSell
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-green-600 text-green-700 hover:bg-green-50 dark:hover:bg-green-950/30 flex-shrink-0"
+            onClick={() => setShowDeactivateDialog(true)}
+            disabled={deactivateMutation.isPending}
+            data-testid="button-resume-sales"
+          >
+            {deactivateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <PlayCircle className="h-4 w-4 mr-1" />}
+            Resume OTA Sales
+          </Button>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3" data-testid="emergency-stop-banner-inactive">
+          <div className="flex items-center gap-2 flex-1">
+            <OctagonX className="h-5 w-5 text-orange-500 flex-shrink-0" />
+            <p className="text-sm text-orange-700 dark:text-orange-300">
+              <span className="font-semibold">Emergency Stop:</span> Instantly pause all OTA bookings by pushing stop-sell to AioSell for all room types.
+            </p>
+          </div>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="flex-shrink-0"
+            onClick={() => setShowActivateDialog(true)}
+            data-testid="button-stop-ota-sales"
+          >
+            <OctagonX className="h-4 w-4 mr-1" />
+            Stop OTA Sales
+          </Button>
+        </div>
+      )}
+
+      <Dialog open={showActivateDialog} onOpenChange={setShowActivateDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <OctagonX className="h-5 w-5" />
+              Activate Emergency Stop?
+            </DialogTitle>
+            <DialogDescription>
+              This will immediately push <strong>stop-sell = true</strong> for all room types to AioSell, blocking new bookings on all connected OTAs (Booking.com, Agoda, MMT, etc.) for the next 365 days.
+              <br /><br />
+              <strong>This does not affect existing bookings or your Hostezee data.</strong> You can resume sales at any time.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 mt-2">
+            <Button variant="outline" onClick={() => setShowActivateDialog(false)} disabled={activateMutation.isPending}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => activateMutation.mutate()}
+              disabled={activateMutation.isPending}
+              data-testid="button-confirm-emergency-stop"
+            >
+              {activateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <OctagonX className="h-4 w-4 mr-1" />}
+              Yes, Stop All OTA Sales
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDeactivateDialog} onOpenChange={setShowDeactivateDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-700">
+              <PlayCircle className="h-5 w-5" />
+              Resume OTA Sales?
+            </DialogTitle>
+            <DialogDescription>
+              This will push <strong>stop-sell = false</strong> to AioSell and trigger an inventory resync to restore correct room availability on all connected OTAs.
+              <br /><br />
+              OTAs will begin accepting bookings again once AioSell propagates the update (usually within a few minutes).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 mt-2">
+            <Button variant="outline" onClick={() => setShowDeactivateDialog(false)} disabled={deactivateMutation.isPending}>Cancel</Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white"
+              onClick={() => deactivateMutation.mutate()}
+              disabled={deactivateMutation.isPending}
+              data-testid="button-confirm-resume-sales"
+            >
+              {deactivateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <PlayCircle className="h-4 w-4 mr-1" />}
+              Yes, Resume OTA Sales
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function ConnectionHealthCard({ propertyId }: { propertyId: number }) {
   const { data: config } = useQuery<AiosellConfig | null>({
     queryKey: ["/api/aiosell/config", { propertyId }],
@@ -4343,6 +4524,7 @@ export default function ChannelManager() {
       ) : (
         <>
           <ConnectionHealthCard propertyId={propertyId} />
+          <EmergencyStopBanner propertyId={propertyId} />
           <Tabs defaultValue="settings" className="w-full">
           <TabsList className="flex w-full overflow-x-auto h-auto flex-wrap gap-1 justify-start bg-muted p-1 rounded-lg" data-testid="tabs-channel-manager">
             <TabsTrigger value="settings" data-testid="tab-settings" className="flex-shrink-0">Settings</TabsTrigger>

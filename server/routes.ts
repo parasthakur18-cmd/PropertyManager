@@ -75,7 +75,7 @@ import {
 import { preBills, rooms, guests, properties, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, aiosellAuditReports, bookingGuests, bookingRoomStays, dailyReportSettings, restaurantPopup } from "@shared/schema";
 import { sendDailyReport, startDailyReportJob, getDailyReportData, buildReportMessage, getReportTimeRange } from "./daily-report";
 import webpush from "web-push";
-import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty, scheduleSyncForProperty, pullReservationsFromAioSell, startInventoryHealthJob, type AiosellReservation } from "./aiosell";
+import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty, scheduleSyncForProperty, pullReservationsFromAioSell, startInventoryHealthJob, type AiosellReservation, type InventoryRestrictionUpdate } from "./aiosell";
 import { verifyProperties, verifyProperty, auditProperty, storeAuditReport } from "./aiosell-verifier";
 import { sendIssueReportNotificationEmail } from "./email-service";
 import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature, isRealPhone } from "./razorpay";
@@ -20725,6 +20725,242 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       const result = await pushInventoryRestrictions(config, updates, toChannels);
       res.json(result);
     } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Emergency Stop Sales ─────────────────────────────────────────────────────
+  // GET  /api/aiosell/emergency-stop?propertyId=X  — returns current stop status
+  // POST /api/aiosell/emergency-stop               — activates stop, pushes stop-sell
+  // DELETE /api/aiosell/emergency-stop?propertyId=X — deactivates, restores inventory
+
+  app.get("/api/aiosell/emergency-stop", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.json({ active: false, activatedAt: null, activatedBy: null });
+      res.json({
+        active: config.emergencyStopActive,
+        activatedAt: config.emergencyStopActivatedAt,
+        activatedBy: config.emergencyStopActivatedBy,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/aiosell/emergency-stop", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant, currentUser } = auth;
+      const { propertyId } = req.body;
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "AioSell not configured for this property" });
+      const mappings = await getRoomMappingsForConfig(config.id);
+      if (mappings.length === 0) return res.status(400).json({ message: "No room mappings configured. Add room mappings first." });
+
+      if (config.emergencyStopActive) {
+        return res.status(400).json({ message: "Emergency stop is already active" });
+      }
+
+      const activatedBy = currentUser.firstName
+        ? `${currentUser.firstName}${currentUser.lastName ? " " + currentUser.lastName : ""}`
+        : currentUser.email;
+      const now = new Date();
+      const todayStr = now.toISOString().split("T")[0];
+      // Stop-sell horizon: 365 days from today
+      const endDate = new Date(now);
+      endDate.setDate(endDate.getDate() + 365);
+      const endDateStr = endDate.toISOString().split("T")[0];
+
+      // 1. Insert stop-sell restriction rows for all room mappings (isEmergencyStop=true)
+      for (const mapping of mappings) {
+        await db.insert(aiosellInventoryRestrictions).values({
+          configId: config.id,
+          propertyId,
+          roomMappingId: mapping.id,
+          startDate: todayStr,
+          endDate: endDateStr,
+          stopSell: true,
+          minimumStay: 1,
+          closeOnArrival: false,
+          closeOnDeparture: false,
+          isPushed: false,
+          isEmergencyStop: true,
+        });
+      }
+
+      // 2. Push stop-sell restriction to AioSell (one call with all rooms)
+      const restrictionUpdate: InventoryRestrictionUpdate = {
+        startDate: todayStr,
+        endDate: endDateStr,
+        rooms: mappings.map(m => ({
+          roomCode: m.aiosellRoomCode,
+          restrictions: {
+            stopSell: true,
+            minimumStay: null,
+            closeOnArrival: false,
+            closeOnDeparture: false,
+            exactStayArrival: null,
+            maximumStayArrival: null,
+            minimumAdvanceReservation: null,
+            maximumStay: null,
+            maximumAdvanceReservation: null,
+            minimumStayArrival: null,
+          },
+        })),
+      };
+      const pushResult = await pushInventoryRestrictions(config, [restrictionUpdate]);
+
+      // Mark DB rows as pushed
+      await db.update(aiosellInventoryRestrictions)
+        .set({ isPushed: pushResult.success, pushedAt: pushResult.success ? now : null })
+        .where(and(
+          eq(aiosellInventoryRestrictions.configId, config.id),
+          eq(aiosellInventoryRestrictions.isEmergencyStop, true),
+        ));
+
+      // 3. Update config flags
+      await db.update(aiosellConfigurations)
+        .set({
+          emergencyStopActive: true,
+          emergencyStopActivatedAt: now,
+          emergencyStopActivatedBy: activatedBy,
+        })
+        .where(eq(aiosellConfigurations.id, config.id));
+
+      // 4. Log to sync_logs
+      await db.insert(aiosellSyncLogs).values({
+        configId: config.id,
+        propertyId,
+        syncType: "emergency_stop_activate",
+        direction: "outbound",
+        status: pushResult.success ? "success" : "failed",
+        requestPayload: { action: "emergency_stop_activate", rooms: mappings.length, activatedBy },
+        responsePayload: pushResult,
+        errorMessage: pushResult.success ? null : pushResult.message || "Push failed",
+      });
+
+      console.log(`[EMERGENCY-STOP] ACTIVATED for property ${propertyId} by ${activatedBy}. Rooms: ${mappings.map(m => m.aiosellRoomCode).join(", ")}. AioSell push: ${pushResult.success ? "OK" : "FAILED"}`);
+
+      res.json({
+        success: true,
+        active: true,
+        activatedAt: now,
+        activatedBy,
+        pushSuccess: pushResult.success,
+        message: pushResult.success
+          ? `Emergency stop activated. Stop-sell pushed to AioSell for ${mappings.length} room type(s) until ${endDateStr}.`
+          : `Emergency stop activated in DB, but AioSell push failed: ${pushResult.message}. Retry with Force Sync.`,
+      });
+    } catch (error: any) {
+      console.error("[EMERGENCY-STOP] activate error:", error.message);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/aiosell/emergency-stop", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant, currentUser } = auth;
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "AioSell not configured for this property" });
+      const mappings = await getRoomMappingsForConfig(config.id);
+
+      const resumedBy = currentUser.firstName
+        ? `${currentUser.firstName}${currentUser.lastName ? " " + currentUser.lastName : ""}`
+        : currentUser.email;
+      const now = new Date();
+      const todayStr = now.toISOString().split("T")[0];
+      const endDate = new Date(now);
+      endDate.setDate(endDate.getDate() + 365);
+      const endDateStr = endDate.toISOString().split("T")[0];
+
+      // 1. Push stopSell=false to AioSell to explicitly lift the restriction
+      let liftResult: { success: boolean; message?: string } = { success: true };
+      if (mappings.length > 0) {
+        const liftUpdate: InventoryRestrictionUpdate = {
+          startDate: todayStr,
+          endDate: endDateStr,
+          rooms: mappings.map(m => ({
+            roomCode: m.aiosellRoomCode,
+            restrictions: {
+              stopSell: false,
+              minimumStay: null,
+              closeOnArrival: false,
+              closeOnDeparture: false,
+              exactStayArrival: null,
+              maximumStayArrival: null,
+              minimumAdvanceReservation: null,
+              maximumStay: null,
+              maximumAdvanceReservation: null,
+              minimumStayArrival: null,
+            },
+          })),
+        };
+        liftResult = await pushInventoryRestrictions(config, [liftUpdate]);
+      }
+
+      // 2. Delete emergency stop restriction rows from DB
+      await db.delete(aiosellInventoryRestrictions)
+        .where(and(
+          eq(aiosellInventoryRestrictions.configId, config.id),
+          eq(aiosellInventoryRestrictions.isEmergencyStop, true),
+        ));
+
+      // 3. Clear config flags
+      await db.update(aiosellConfigurations)
+        .set({
+          emergencyStopActive: false,
+          emergencyStopActivatedAt: null,
+          emergencyStopActivatedBy: null,
+        })
+        .where(eq(aiosellConfigurations.id, config.id));
+
+      // 4. Log to sync_logs
+      await db.insert(aiosellSyncLogs).values({
+        configId: config.id,
+        propertyId,
+        syncType: "emergency_stop_deactivate",
+        direction: "outbound",
+        status: liftResult.success ? "success" : "failed",
+        requestPayload: { action: "emergency_stop_deactivate", rooms: mappings.length, resumedBy },
+        responsePayload: liftResult,
+        errorMessage: liftResult.success ? null : liftResult.message || "Lift push failed",
+      });
+
+      // 5. Trigger background inventory sync to restore correct counts
+      autoSyncInventoryForProperty(propertyId).catch((err: any) => {
+        console.error(`[EMERGENCY-STOP] post-resume sync failed for property ${propertyId}: ${err.message}`);
+      });
+
+      console.log(`[EMERGENCY-STOP] DEACTIVATED for property ${propertyId} by ${resumedBy}. AioSell lift: ${liftResult.success ? "OK" : "FAILED"}. Background resync started.`);
+
+      res.json({
+        success: true,
+        active: false,
+        liftSuccess: liftResult.success,
+        message: liftResult.success
+          ? `Emergency stop lifted. Stop-sell removed from AioSell. Inventory resync started in background.`
+          : `Emergency stop cleared in DB, but AioSell lift push failed: ${liftResult.message}. Run Force Sync to restore inventory.`,
+      });
+    } catch (error: any) {
+      console.error("[EMERGENCY-STOP] deactivate error:", error.message);
       res.status(500).json({ message: error.message });
     }
   });

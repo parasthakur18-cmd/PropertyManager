@@ -1871,6 +1871,9 @@ export const aiosellConfigurations = pgTable("aiosell_configurations", {
   isSandbox: boolean("is_sandbox").notNull().default(false),
   lastSyncAt: timestamp("last_sync_at"),
   webhookSecret: varchar("webhook_secret", { length: 255 }),
+  emergencyStopActive: boolean("emergency_stop_active").notNull().default(false),
+  emergencyStopActivatedAt: timestamp("emergency_stop_activated_at"),
+  emergencyStopActivatedBy: varchar("emergency_stop_activated_by", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1974,6 +1977,7 @@ export const aiosellInventoryRestrictions = pgTable("aiosell_inventory_restricti
   closeOnDeparture: boolean("close_on_departure").notNull().default(false),
   isPushed: boolean("is_pushed").notNull().default(false),
   pushedAt: timestamp("pushed_at"),
+  isEmergencyStop: boolean("is_emergency_stop").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
