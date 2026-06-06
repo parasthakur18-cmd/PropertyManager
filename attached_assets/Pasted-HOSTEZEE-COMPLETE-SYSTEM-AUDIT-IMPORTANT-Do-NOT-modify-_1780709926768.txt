@@ -1,0 +1,329 @@
+HOSTEZEE COMPLETE SYSTEM AUDIT
+
+IMPORTANT:
+Do NOT modify, refactor, optimize, or deploy any code.
+Do NOT create new code.
+Do NOT fix anything yet.
+
+I want a complete audit and investigation report of the entire system.
+
+Your task is ONLY to analyze the current codebase and identify all inconsistencies, bugs, duplicate logic, calculation mismatches, and architectural risks.
+
+====================================================
+PHASE 1 - PROJECT STRUCTURE AUDIT
+====================================================
+
+Scan the entire project and generate:
+
+1. Complete module map
+2. Booking-related files
+3. Billing-related files
+4. Checkout-related files
+5. OTA sync-related files
+6. Inventory-related files
+7. Calendar-related files
+8. Food order-related files
+9. Dashboard/report-related files
+
+Show:
+- File path
+- Purpose
+- Dependencies
+
+====================================================
+PHASE 2 - NIGHT CALCULATION AUDIT
+====================================================
+
+Find EVERY location where nights are calculated.
+
+Search for:
+- nights
+- stayNights
+- totalNights
+- date difference
+- checkin
+- checkout
+- arrival
+- departure
+- duration
+
+For every location provide:
+
+File:
+Function:
+Formula:
+Data Source:
+Expected Result:
+
+Identify:
+
+- Inclusive date counting
+- Exclusive date counting
+- Timezone issues
+- Date conversion issues
+- UTC/local mismatches
+- Manual night overrides
+- Merged booking night calculations
+- Walk-in night calculations
+
+Generate a comparison table.
+
+====================================================
+PHASE 3 - BILLING ENGINE AUDIT
+====================================================
+
+Trace room billing from start to finish.
+
+Find all calculations involving:
+
+- Room Charges
+- Room Rate
+- Extra Mattress
+- GST
+- Service Charge
+- Discounts
+- Food Orders
+- Advance Payments
+- Balance Due
+- Grand Total
+
+For each calculation provide:
+
+File:
+Function:
+Formula:
+Input Fields:
+Output Fields:
+
+Generate full billing flow.
+
+====================================================
+PHASE 4 - MERGED CHECKOUT AUDIT
+====================================================
+
+Trace merged checkout completely.
+
+I recently found an example where:
+
+Room 401 = 3 nights = ₹12000
+Room 402 = 3 nights = ₹12000
+
+But summary showed:
+
+Room Charges (2 nights) = ₹16000
+
+GST was calculated on ₹16000.
+
+Investigate how this can happen.
+
+Find:
+
+- Room-wise billing source
+- Summary billing source
+- GST source
+- Grand total source
+
+Identify where values originate.
+
+Show exact data flow.
+
+====================================================
+PHASE 5 - UI VS BACKEND AUDIT
+====================================================
+
+Find every location where:
+
+Displayed value source
+≠
+Calculation source
+
+Examples:
+
+- Calendar count differs from booking count
+- Room nights differ from bill nights
+- Dashboard differs from occupancy report
+- Checkout differs from booking details
+
+Generate a mismatch report.
+
+====================================================
+PHASE 6 - DATABASE AUDIT
+====================================================
+
+Inspect all booking and billing tables.
+
+List:
+
+Table Name
+Purpose
+Primary Keys
+Relationships
+
+Identify duplicate fields such as:
+
+checkinDate
+checkInDate
+arrivalDate
+arrival
+
+checkoutDate
+checkOutDate
+departureDate
+
+stayNights
+totalNights
+numberOfNights
+
+roomRate
+price
+dailyRate
+
+Highlight conflicts.
+
+====================================================
+PHASE 7 - INVENTORY AUDIT
+====================================================
+
+Trace inventory flow.
+
+Check:
+
+Booking Creation
+Booking Modification
+Cancellation
+Checkout
+Walk-in
+OTA Booking
+Manual Block
+
+Verify:
+
+Inventory Reduce
+Inventory Increase
+Inventory Release
+
+Identify any situation where inventory can become incorrect.
+
+====================================================
+PHASE 8 - OTA SYNC AUDIT
+====================================================
+
+Audit:
+
+Booking → OTA
+OTA → Booking
+Inventory → OTA
+OTA → Inventory
+
+Check:
+
+Aiosell
+Booking.com
+Goibibo
+MakeMyTrip
+Any other connected OTA
+
+Verify:
+
+Room Count Logic
+Date Logic
+Night Logic
+Availability Logic
+
+Identify risks of:
+
+Overbooking
+Underbooking
+Wrong room release
+Wrong inventory blocking
+
+====================================================
+PHASE 9 - CALENDAR AUDIT
+====================================================
+
+Audit:
+
+Calendar Screen
+Booking List
+Occupancy View
+Dashboard Reports
+
+Verify all are reading the same source of truth.
+
+Find any calculation differences.
+
+====================================================
+PHASE 10 - FOOD BILLING AUDIT
+====================================================
+
+Trace:
+
+Food Order Creation
+Kitchen Orders
+Bill Generation
+Checkout Integration
+
+Verify:
+
+Food total
+GST
+Merged billing
+Room billing integration
+
+====================================================
+PHASE 11 - DUPLICATE LOGIC AUDIT
+====================================================
+
+Find duplicate implementations of:
+
+Night calculations
+Billing calculations
+Inventory calculations
+Checkout calculations
+GST calculations
+
+Report:
+
+Original Source
+Duplicate Source
+Risk Level
+
+====================================================
+PHASE 12 - FINAL AUDIT REPORT
+====================================================
+
+DO NOT FIX ANYTHING.
+
+Generate:
+
+SECTION A:
+Critical Issues
+(Revenue loss, wrong billing, inventory corruption)
+
+SECTION B:
+High Priority Issues
+(Incorrect calculations, OTA sync risks)
+
+SECTION C:
+Medium Priority Issues
+(Display inconsistencies)
+
+SECTION D:
+Minor Issues
+(UI/UX issues)
+
+SECTION E:
+Architectural Risks
+
+SECTION F:
+Recommended Fixes
+(Without modifying code)
+
+Provide exact file names, functions, and data flow diagrams wherever possible.
+
+Again:
+DO NOT CHANGE CODE.
+DO NOT DEPLOY.
+DO NOT AUTO-FIX.
+
+Only perform a complete audit and generate a detailed report.
