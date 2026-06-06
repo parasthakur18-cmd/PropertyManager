@@ -556,8 +556,14 @@ export async function autoSyncInventoryForProperty(
       return src.startsWith("aiosell-");
     };
 
-    // Bookings that Hostezee should count (direct, walk-in, other channels NOT managed by AioSell)
-    const directBookings = activeBookings.filter(b => !isAiosellSourced(b.source));
+    // Bookings that Hostezee should count:
+    // - ALWAYS count checked-in bookings regardless of source — a guest physically in the room
+    //   occupies it unconditionally. AioSell's double-deduction concern only applies to
+    //   pending/confirmed OTA reservations, not guests who are already checked in.
+    // - For confirmed/pending bookings, exclude AioSell-sourced ones (AioSell tracks those itself).
+    const directBookings = activeBookings.filter(b =>
+      b.status === "checked-in" || !isAiosellSourced(b.source)
+    );
     // Booking IDs where TBS stays should be excluded from push count (AioSell tracks these itself)
     const aiosellBookingIds = new Set(
       activeBookings.filter(b => isAiosellSourced(b.source)).map(b => b.id)
