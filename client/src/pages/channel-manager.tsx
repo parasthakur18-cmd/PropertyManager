@@ -4171,7 +4171,7 @@ function EmergencyStopBanner({ propertyId }: { propertyId: number }) {
 
   const activateMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/aiosell/emergency-stop", { propertyId });
+      const res = await apiRequest("/api/aiosell/emergency-stop", "POST", { propertyId });
       return res.json();
     },
     onSuccess: (data) => {
