@@ -21051,6 +21051,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       const config = await getConfigForProperty(propertyId);
       if (!config) return res.status(404).json({ message: "AioSell not configured" });
 
+      const tablesMissing = (e: any) => String(e?.message ?? "").includes("does not exist");
       const [mappings, activeRestrictions, certLogs, pushLogs] = await Promise.all([
         getRoomMappingsForConfig(config.id),
         db.select().from(aiosellInventoryRestrictions).where(
@@ -21058,7 +21059,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         ),
         db.select().from(roomCertificationLogs).where(
           and(eq(roomCertificationLogs.configId, config.id))
-        ).orderBy(desc(roomCertificationLogs.certifiedAt)),
+        ).orderBy(desc(roomCertificationLogs.certifiedAt)).catch((e: any) => { if (tablesMissing(e)) return []; throw e; }),
         db.select({
           id: aiosellSyncLogs.id, status: aiosellSyncLogs.status,
           createdAt: aiosellSyncLogs.createdAt, requestPayload: aiosellSyncLogs.requestPayload,
@@ -21214,7 +21215,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       };
       const pushResult = await pushInventoryRestrictions(config, [liftUpdate]);
 
-      // 3. Audit log
+      // 3. Audit log (best-effort — skip gracefully if table not yet migrated)
       await db.insert(roomOtaControlLogs).values({
         propertyId,
         configId: config.id,
@@ -21226,7 +21227,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         performedAt: now,
         pushSuccess: pushResult.success,
         pushError: pushResult.success ? null : pushResult.message,
-      });
+      }).catch((e: any) => { if (!String(e?.message ?? "").includes("does not exist")) throw e; });
 
       await db.insert(aiosellSyncLogs).values({
         configId: config.id,
@@ -21338,7 +21339,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           ));
       }
 
-      // 3. Audit log
+      // 3. Audit log (best-effort — skip gracefully if table not yet migrated)
       await db.insert(roomOtaControlLogs).values({
         propertyId,
         configId: config.id,
@@ -21350,7 +21351,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         performedAt: now,
         pushSuccess: pushResult.success,
         pushError: pushResult.success ? null : pushResult.message,
-      });
+      }).catch((e: any) => { if (!String(e?.message ?? "").includes("does not exist")) throw e; });
 
       await db.insert(aiosellSyncLogs).values({
         configId: config.id,
@@ -21404,6 +21405,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         : currentUser.email;
       const now = new Date();
 
+      const _tableMissing = (e: any) => String(e?.message ?? "").includes("does not exist");
       await db.insert(roomCertificationLogs).values({
         propertyId,
         configId: config.id,
@@ -21417,7 +21419,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         hostezeeCalc: hostezeeCalc ?? null,
         lastPushed: lastPushed ?? null,
         mismatch: mismatch ?? null,
-      });
+      }).catch((e: any) => { if (!_tableMissing(e)) throw e; });
 
       await db.insert(roomOtaControlLogs).values({
         propertyId,
@@ -21430,7 +21432,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         performedAt: now,
         notes: notes || null,
         pushSuccess: null,
-      });
+      }).catch((e: any) => { if (!_tableMissing(e)) throw e; });
 
       console.log(`[ROOM-CONTROL] CERTIFIED ${mapping.aiosellRoomCode} as ${status.toUpperCase()} by ${certifiedBy} for property ${propertyId}`);
 
