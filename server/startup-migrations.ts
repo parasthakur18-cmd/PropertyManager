@@ -1299,67 +1299,54 @@ async function addAiosellEmergencyStop(): Promise<void> {
 }
 
 async function addRoomOtaControlTables(): Promise<void> {
-  // room_ota_control_logs — audit trail for open/close/certify actions per room
-  const hasControlLogs = await db.execute(
-    sql`SELECT to_regclass('room_ota_control_logs') AS t`
-  ).then(r => !!(r.rows[0] as any)?.t);
-  if (!hasControlLogs) {
-    await runRaw(`CREATE TABLE room_ota_control_logs (
-      id SERIAL PRIMARY KEY,
-      property_id INTEGER NOT NULL,
-      config_id INTEGER NOT NULL,
-      room_mapping_id INTEGER NOT NULL,
-      room_code VARCHAR(100) NOT NULL,
-      room_type VARCHAR(100) NOT NULL,
-      action VARCHAR(50) NOT NULL,
-      performed_by VARCHAR(255) NOT NULL,
-      performed_at TIMESTAMP DEFAULT NOW() NOT NULL,
-      notes TEXT,
-      push_success BOOLEAN,
-      push_error TEXT
-    );
-    CREATE INDEX idx_room_ota_control_logs_config_id ON room_ota_control_logs (config_id, performed_at DESC);
-    CREATE INDEX idx_room_ota_control_logs_room_mapping ON room_ota_control_logs (room_mapping_id, performed_at DESC)`);
-  }
-  // room_certification_logs — per-room certification history
-  const hasCertLogs = await db.execute(
-    sql`SELECT to_regclass('room_certification_logs') AS t`
-  ).then(r => !!(r.rows[0] as any)?.t);
-  if (!hasCertLogs) {
-    await runRaw(`CREATE TABLE room_certification_logs (
-      id SERIAL PRIMARY KEY,
-      property_id INTEGER NOT NULL,
-      config_id INTEGER NOT NULL,
-      room_mapping_id INTEGER NOT NULL,
-      room_code VARCHAR(100) NOT NULL,
-      room_type VARCHAR(100) NOT NULL,
-      status VARCHAR(20) NOT NULL,
-      certified_by VARCHAR(255) NOT NULL,
-      certified_at TIMESTAMP DEFAULT NOW() NOT NULL,
-      notes TEXT,
-      hostezee_calc INTEGER,
-      last_pushed INTEGER,
-      mismatch BOOLEAN
-    );
-    CREATE INDEX idx_room_cert_logs_config_id ON room_certification_logs (config_id, certified_at DESC);
-    CREATE INDEX idx_room_cert_logs_room_mapping ON room_certification_logs (room_mapping_id, certified_at DESC)`);
-  }
+  // Use CREATE TABLE IF NOT EXISTS — fully idempotent, no to_regclass check needed.
+  // Each statement in its own runRaw so a failed index never blocks table creation.
+  await runRaw(`CREATE TABLE IF NOT EXISTS room_ota_control_logs (
+    id SERIAL PRIMARY KEY,
+    property_id INTEGER NOT NULL,
+    config_id INTEGER NOT NULL,
+    room_mapping_id INTEGER NOT NULL,
+    room_code VARCHAR(100) NOT NULL,
+    room_type VARCHAR(100) NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    performed_by VARCHAR(255) NOT NULL,
+    performed_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    notes TEXT,
+    push_success BOOLEAN,
+    push_error TEXT
+  )`);
+  await runRaw(`CREATE TABLE IF NOT EXISTS room_certification_logs (
+    id SERIAL PRIMARY KEY,
+    property_id INTEGER NOT NULL,
+    config_id INTEGER NOT NULL,
+    room_mapping_id INTEGER NOT NULL,
+    room_code VARCHAR(100) NOT NULL,
+    room_type VARCHAR(100) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    certified_by VARCHAR(255) NOT NULL,
+    certified_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    notes TEXT,
+    hostezee_calc INTEGER,
+    last_pushed INTEGER,
+    mismatch BOOLEAN
+  )`);
+  // Indexes — each separate so one failure doesn't block the others
+  await runRaw(`CREATE INDEX IF NOT EXISTS idx_room_ota_control_logs_config_id ON room_ota_control_logs (config_id, performed_at DESC)`).catch(() => {});
+  await runRaw(`CREATE INDEX IF NOT EXISTS idx_room_ota_control_logs_room_mapping ON room_ota_control_logs (room_mapping_id, performed_at DESC)`).catch(() => {});
+  await runRaw(`CREATE INDEX IF NOT EXISTS idx_room_cert_logs_config_id ON room_certification_logs (config_id, certified_at DESC)`).catch(() => {});
+  await runRaw(`CREATE INDEX IF NOT EXISTS idx_room_cert_logs_room_mapping ON room_certification_logs (room_mapping_id, certified_at DESC)`).catch(() => {});
 }
 
 async function addRoomOtaControlIndexes(): Promise<void> {
-  // Idempotent — CREATE INDEX IF NOT EXISTS is safe to run every startup.
-  // Needed separately from addRoomOtaControlTables because the tables may have
-  // already been created on a prior deploy (before indexes were added).
-  await runRaw(`
-    CREATE INDEX IF NOT EXISTS idx_room_ota_control_logs_config_id
-      ON room_ota_control_logs (config_id, performed_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_room_ota_control_logs_room_mapping
-      ON room_ota_control_logs (room_mapping_id, performed_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_room_cert_logs_config_id
-      ON room_certification_logs (config_id, certified_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_room_cert_logs_room_mapping
-      ON room_certification_logs (room_mapping_id, certified_at DESC)
-  `);
+  // Idempotent back-fill — runs every startup to pick up any previously missed indexes.
+  for (const stmt of [
+    `CREATE INDEX IF NOT EXISTS idx_room_ota_control_logs_config_id ON room_ota_control_logs (config_id, performed_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_room_ota_control_logs_room_mapping ON room_ota_control_logs (room_mapping_id, performed_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_room_cert_logs_config_id ON room_certification_logs (config_id, certified_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_room_cert_logs_room_mapping ON room_certification_logs (room_mapping_id, certified_at DESC)`,
+  ]) {
+    await runRaw(stmt).catch(() => {});
+  }
 }
 
 async function addMenuItemAllDayColumn(): Promise<void> {
