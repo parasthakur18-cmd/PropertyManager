@@ -982,11 +982,30 @@ export async function autoSyncInventoryForProperty(
       // reason as inventory: prevents silent range-limit drops).
       // IMPORTANT: always run stop-sell even if some inventory ranges failed —
       // blocking booked dates on OTAs is more critical than perfect count accuracy.
-      // Skip ranges where ALL rooms are open (available > 0) — no point sending stopSell=false for every range.
-      const zeroAvailRanges = inventoryUpdates.filter(range => range.rooms.some(r => r.available === 0));
+      //
+      // SAFETY: During Emergency Stop, a room may have been deliberately opened via
+      // Room Control (restriction row deleted). In that case its availability could
+      // be 0 even though it was manually un-stopped. Using availability=0 as the
+      // stop-sell signal would silently re-close that room on AioSell within 30min.
+      //
+      // Rule:
+      //   Emergency Stop ACTIVE  → DB restriction row is the source of truth.
+      //                            Only rooms that still have a restriction row get
+      //                            stopSell:true.  Manually-opened rooms (no row)
+      //                            always get stopSell:false, even if avail=0.
+      //   Emergency Stop INACTIVE → use availability=0 as normal (overbooking guard).
+      const emergencyActive = !!config.emergencyStopActive;
+      const shouldStopSell = (roomCode: string, available: number): boolean => {
+        if (emergencyActive) return stopSellRanges.has(roomCode);
+        return available === 0;
+      };
+
+      const needsStopSellUpdate = inventoryUpdates.filter(range =>
+        range.rooms.some(r => shouldStopSell(r.roomCode, r.available))
+      );
       let ssSuccess = 0; let ssFail = 0;
-      for (let ri = 0; ri < zeroAvailRanges.length; ri++) {
-        const range = zeroAvailRanges[ri];
+      for (let ri = 0; ri < needsStopSellUpdate.length; ri++) {
+        const range = needsStopSellUpdate[ri];
         if (ri > 0) await sleep(2500); // rate-limit guard
         const stopSellUpdate: InventoryRestrictionUpdate = {
           startDate: range.startDate,
@@ -994,7 +1013,7 @@ export async function autoSyncInventoryForProperty(
           rooms: range.rooms.map(r => ({
             roomCode: r.roomCode,
             restrictions: {
-              stopSell: r.available === 0,
+              stopSell: shouldStopSell(r.roomCode, r.available),
               minimumStay: null,
               closeOnArrival: false,
               closeOnDeparture: false,
@@ -1007,13 +1026,19 @@ export async function autoSyncInventoryForProperty(
             },
           })),
         };
+        if (emergencyActive) {
+          const openedRooms = range.rooms.filter(r => !stopSellRanges.has(r.roomCode));
+          if (openedRooms.length > 0) {
+            console.log(`[AIOSELL] Step2b: Emergency Stop active — NOT auto-closing manually-opened rooms: [${openedRooms.map(r => r.roomCode).join(", ")}]`);
+          }
+        }
         const ssResult = await pushInventoryRestrictions(config, [stopSellUpdate]);
         if (ssResult.success) { ssSuccess++; } else { ssFail++; }
       }
       const stopSellSummary = inventoryUpdates[0]?.rooms
-        .map(r => `${r.roomCode}:${r.available === 0 ? "CLOSED" : "open"}`)
+        .map(r => `${r.roomCode}:${shouldStopSell(r.roomCode, r.available) ? "CLOSED" : "open"}`)
         .join(", ") ?? "none";
-      console.log(`[AIOSELL] Auto stop-sell: ${ssSuccess} OK / ${ssFail} failed for ${zeroAvailRanges.length} range(s) (${inventoryUpdates.length - zeroAvailRanges.length} all-open skipped). Today: [${stopSellSummary}]`);
+      console.log(`[AIOSELL] Auto stop-sell: ${ssSuccess} OK / ${ssFail} failed for ${needsStopSellUpdate.length} range(s) (${inventoryUpdates.length - needsStopSellUpdate.length} all-open skipped). Today: [${stopSellSummary}]`);
     }
 
     // ── Step 3: Re-push stored restrictions AFTER inventory push ─────────────────

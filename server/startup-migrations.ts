@@ -1317,7 +1317,9 @@ async function addRoomOtaControlTables(): Promise<void> {
       notes TEXT,
       push_success BOOLEAN,
       push_error TEXT
-    )`);
+    );
+    CREATE INDEX idx_room_ota_control_logs_config_id ON room_ota_control_logs (config_id, performed_at DESC);
+    CREATE INDEX idx_room_ota_control_logs_room_mapping ON room_ota_control_logs (room_mapping_id, performed_at DESC)`);
   }
   // room_certification_logs — per-room certification history
   const hasCertLogs = await db.execute(
@@ -1338,8 +1340,26 @@ async function addRoomOtaControlTables(): Promise<void> {
       hostezee_calc INTEGER,
       last_pushed INTEGER,
       mismatch BOOLEAN
-    )`);
+    );
+    CREATE INDEX idx_room_cert_logs_config_id ON room_certification_logs (config_id, certified_at DESC);
+    CREATE INDEX idx_room_cert_logs_room_mapping ON room_certification_logs (room_mapping_id, certified_at DESC)`);
   }
+}
+
+async function addRoomOtaControlIndexes(): Promise<void> {
+  // Idempotent — CREATE INDEX IF NOT EXISTS is safe to run every startup.
+  // Needed separately from addRoomOtaControlTables because the tables may have
+  // already been created on a prior deploy (before indexes were added).
+  await runRaw(`
+    CREATE INDEX IF NOT EXISTS idx_room_ota_control_logs_config_id
+      ON room_ota_control_logs (config_id, performed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_room_ota_control_logs_room_mapping
+      ON room_ota_control_logs (room_mapping_id, performed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_room_cert_logs_config_id
+      ON room_certification_logs (config_id, certified_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_room_cert_logs_room_mapping
+      ON room_certification_logs (room_mapping_id, certified_at DESC)
+  `);
 }
 
 async function addMenuItemAllDayColumn(): Promise<void> {
@@ -1413,6 +1433,12 @@ export async function runStartupMigrations(): Promise<void> {
     await addRoomOtaControlTables();
   } catch (err: any) {
     console.warn(`[MIGRATE] room_ota_control_tables: ${err.message}`);
+  }
+
+  try {
+    await addRoomOtaControlIndexes();
+  } catch (err: any) {
+    console.warn(`[MIGRATE] room_ota_control_indexes: ${err.message}`);
   }
 }
 
