@@ -542,8 +542,21 @@ export async function autoSyncInventoryForProperty(
     // making AioSell show 0 when Hostezee shows 1.
     // Fix: only count non-OTA (direct/manual) bookings when computing how many rooms are occupied.
     // AioSell handles its own OTA bookings itself.
-    const isAiosellSourced = (src: string | null | undefined) =>
-      typeof src === "string" && src.startsWith("aiosell-");
+    //
+    // Bare OTA names (e.g. "Booking.com", "MMT", "Airbnb") entered manually by staff are
+    // treated identically to "aiosell-*" prefixed bookings because the underlying reservation
+    // exists in AioSell's system — counting them here causes the same double-deduction.
+    const OTA_BARE_NORMALISED = new Set([
+      "bookingcom", "booking", "mmt", "makemytrip", "makeymytrip",
+      "airbnb", "agoda", "expedia", "goibibo", "yatra", "viacom",
+      "ixigo", "cleartrip", "hostelworld", "ota",
+    ]);
+    const isAiosellSourced = (src: string | null | undefined): boolean => {
+      if (!src || typeof src !== "string") return false;
+      if (src.startsWith("aiosell-")) return true;
+      const normalised = src.toLowerCase().replace(/[\s.\-_]+/g, "");
+      return OTA_BARE_NORMALISED.has(normalised);
+    };
 
     // Bookings that Hostezee should count (direct, walk-in, other channels NOT managed by AioSell)
     const directBookings = activeBookings.filter(b => !isAiosellSourced(b.source));
@@ -1095,14 +1108,14 @@ export function scheduleSyncForProperty(
 }
 
 // ── Daily Inventory Health Job ─────────────────────────────────────────────────
-// Runs every 24 hours. For each active non-sandbox property, if last_sync_at is
-// null or older than 23 hours, triggers a full inventory push. This prevents
+// Runs every 30 minutes. For each active non-sandbox property, if last_sync_at is
+// null or older than 25 minutes, triggers a full inventory push. This prevents
 // inventory from going stale at properties with low booking activity (Woodpecker)
 // and acts as a safety net for any missed event-driven push.
 // Properties are staggered 60s apart to avoid simultaneous 429s on AioSell.
 export function startInventoryHealthJob(): void {
-  const INTERVAL_MS      = 24 * 60 * 60 * 1000; // 24 hours between runs
-  const STALE_THRESHOLD_MS = 23 * 60 * 60 * 1000; // push if stale by 23h
+  const INTERVAL_MS      = 30 * 60 * 1000; // 30 minutes between runs
+  const STALE_THRESHOLD_MS = 25 * 60 * 1000; // push if stale by 25 min
 
   async function runHealthCheck(): Promise<void> {
     const now = new Date();

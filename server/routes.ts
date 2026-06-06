@@ -4264,6 +4264,35 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         }
       }
       
+      // ── Source normalisation ─────────────────────────────────────────────────
+      // Bare OTA names ("Booking.com", "MMT", "Airbnb", "Agoda", "OTA") entered
+      // via the manual booking form must be stored with the "aiosell-" prefix so
+      // isAiosellSourced() excludes them from the inventory push. Without this,
+      // those rooms are double-deducted: once by Hostezee and once by Aiosell.
+      if (bookingData.source) {
+        const _srcNorm = bookingData.source.toLowerCase().replace(/[\s.\-_]+/g, "");
+        const OTA_SOURCE_MAP: Record<string, string> = {
+          bookingcom: "aiosell-booking.com",
+          booking: "aiosell-booking.com",
+          mmt: "aiosell-mmt",
+          makemytrip: "aiosell-mmt",
+          airbnb: "aiosell-airbnb",
+          agoda: "aiosell-agoda",
+          expedia: "aiosell-expedia",
+          goibibo: "aiosell-goibibo",
+          yatra: "aiosell-yatra",
+          viacom: "aiosell-via",
+          ixigo: "aiosell-ixigo",
+          cleartrip: "aiosell-cleartrip",
+          hostelworld: "aiosell-hostelworld",
+          ota: "aiosell-ota",
+        };
+        if (OTA_SOURCE_MAP[_srcNorm]) {
+          console.log(`[SOURCE_NORM] Normalising source "${bookingData.source}" → "${OTA_SOURCE_MAP[_srcNorm]}" for booking by ${bookingData.guestName}`);
+          bookingData = { ...bookingData, source: OTA_SOURCE_MAP[_srcNorm] };
+        }
+      }
+
       const _attemptRooms = [bookingData.roomId, ...(bookingData.roomIds ?? [])].filter(Boolean).join(",") || "N/A";
       console.log(`[BOOKING_ATTEMPT] rooms=${_attemptRooms} checkIn=${bookingData.checkInDate} checkOut=${bookingData.checkOutDate} guest=${bookingData.guestName}`);
 
@@ -4605,6 +4634,24 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             (validatedData as any).bedsBooked = validatedData.numberOfGuests;
             console.log(`[DORM-EDIT] bedsBooked auto-synced to ${validatedData.numberOfGuests} for room ${dormCheck.roomNumber} (booking #${req.params.id})`);
           }
+        }
+      }
+
+      // ── Source normalisation on edit ─────────────────────────────────────────
+      if (validatedData.source) {
+        const _srcNorm = validatedData.source.toLowerCase().replace(/[\s.\-_]+/g, "");
+        const OTA_SOURCE_MAP: Record<string, string> = {
+          bookingcom: "aiosell-booking.com", booking: "aiosell-booking.com",
+          mmt: "aiosell-mmt", makemytrip: "aiosell-mmt",
+          airbnb: "aiosell-airbnb", agoda: "aiosell-agoda",
+          expedia: "aiosell-expedia", goibibo: "aiosell-goibibo",
+          yatra: "aiosell-yatra", viacom: "aiosell-via",
+          ixigo: "aiosell-ixigo", cleartrip: "aiosell-cleartrip",
+          hostelworld: "aiosell-hostelworld", ota: "aiosell-ota",
+        };
+        if (OTA_SOURCE_MAP[_srcNorm]) {
+          (validatedData as any).source = OTA_SOURCE_MAP[_srcNorm];
+          console.log(`[SOURCE_NORM] Normalising source "${_srcNorm}" → "${OTA_SOURCE_MAP[_srcNorm]}" on edit of booking #${req.params.id}`);
         }
       }
 
