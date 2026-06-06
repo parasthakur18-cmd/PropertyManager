@@ -543,19 +543,17 @@ export async function autoSyncInventoryForProperty(
     // Fix: only count non-OTA (direct/manual) bookings when computing how many rooms are occupied.
     // AioSell handles its own OTA bookings itself.
     //
-    // Bare OTA names (e.g. "Booking.com", "MMT", "Airbnb") entered manually by staff are
-    // treated identically to "aiosell-*" prefixed bookings because the underlying reservation
-    // exists in AioSell's system — counting them here causes the same double-deduction.
-    const OTA_BARE_NORMALISED = new Set([
-      "bookingcom", "booking", "mmt", "makemytrip", "makeymytrip",
-      "airbnb", "agoda", "expedia", "goibibo", "yatra", "viacom",
-      "ixigo", "cleartrip", "hostelworld", "ota",
-    ]);
+    // ONLY bookings created by the AioSell webhook handler (source prefixed with "aiosell-")
+    // are excluded from the push count. Those bookings are already tracked inside AioSell's
+    // system and will be deducted by AioSell itself.
+    //
+    // Manually-entered bookings where staff type "Booking.com", "MMT" etc. as the source
+    // are NOT excluded — AioSell has no record of them and will not deduct them, so
+    // Hostezee must count them in the push. Excluding them causes the room to appear
+    // available on OTAs even though it is physically occupied (overbooking risk).
     const isAiosellSourced = (src: string | null | undefined): boolean => {
       if (!src || typeof src !== "string") return false;
-      if (src.startsWith("aiosell-")) return true;
-      const normalised = src.toLowerCase().replace(/[\s.\-_]+/g, "");
-      return OTA_BARE_NORMALISED.has(normalised);
+      return src.startsWith("aiosell-");
     };
 
     // Bookings that Hostezee should count (direct, walk-in, other channels NOT managed by AioSell)

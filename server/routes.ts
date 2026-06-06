@@ -4264,34 +4264,10 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         }
       }
       
-      // ── Source normalisation ─────────────────────────────────────────────────
-      // Bare OTA names ("Booking.com", "MMT", "Airbnb", "Agoda", "OTA") entered
-      // via the manual booking form must be stored with the "aiosell-" prefix so
-      // isAiosellSourced() excludes them from the inventory push. Without this,
-      // those rooms are double-deducted: once by Hostezee and once by Aiosell.
-      if (bookingData.source) {
-        const _srcNorm = bookingData.source.toLowerCase().replace(/[\s.\-_]+/g, "");
-        const OTA_SOURCE_MAP: Record<string, string> = {
-          bookingcom: "aiosell-booking.com",
-          booking: "aiosell-booking.com",
-          mmt: "aiosell-mmt",
-          makemytrip: "aiosell-mmt",
-          airbnb: "aiosell-airbnb",
-          agoda: "aiosell-agoda",
-          expedia: "aiosell-expedia",
-          goibibo: "aiosell-goibibo",
-          yatra: "aiosell-yatra",
-          viacom: "aiosell-via",
-          ixigo: "aiosell-ixigo",
-          cleartrip: "aiosell-cleartrip",
-          hostelworld: "aiosell-hostelworld",
-          ota: "aiosell-ota",
-        };
-        if (OTA_SOURCE_MAP[_srcNorm]) {
-          console.log(`[SOURCE_NORM] Normalising source "${bookingData.source}" → "${OTA_SOURCE_MAP[_srcNorm]}" for booking by ${bookingData.guestName}`);
-          bookingData = { ...bookingData, source: OTA_SOURCE_MAP[_srcNorm] };
-        }
-      }
+      // Source is stored exactly as entered by staff.
+      // AioSell webhook bookings are already stored with "aiosell-" prefix by the webhook handler.
+      // Manually-entered OTA names (e.g. "Booking.com") must NOT be converted to "aiosell-*"
+      // because AioSell has no record of those bookings and will not deduct them from inventory.
 
       const _attemptRooms = [bookingData.roomId, ...(bookingData.roomIds ?? [])].filter(Boolean).join(",") || "N/A";
       console.log(`[BOOKING_ATTEMPT] rooms=${_attemptRooms} checkIn=${bookingData.checkInDate} checkOut=${bookingData.checkOutDate} guest=${bookingData.guestName}`);
@@ -4637,23 +4613,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         }
       }
 
-      // ── Source normalisation on edit ─────────────────────────────────────────
-      if (validatedData.source) {
-        const _srcNorm = validatedData.source.toLowerCase().replace(/[\s.\-_]+/g, "");
-        const OTA_SOURCE_MAP: Record<string, string> = {
-          bookingcom: "aiosell-booking.com", booking: "aiosell-booking.com",
-          mmt: "aiosell-mmt", makemytrip: "aiosell-mmt",
-          airbnb: "aiosell-airbnb", agoda: "aiosell-agoda",
-          expedia: "aiosell-expedia", goibibo: "aiosell-goibibo",
-          yatra: "aiosell-yatra", viacom: "aiosell-via",
-          ixigo: "aiosell-ixigo", cleartrip: "aiosell-cleartrip",
-          hostelworld: "aiosell-hostelworld", ota: "aiosell-ota",
-        };
-        if (OTA_SOURCE_MAP[_srcNorm]) {
-          (validatedData as any).source = OTA_SOURCE_MAP[_srcNorm];
-          console.log(`[SOURCE_NORM] Normalising source "${_srcNorm}" → "${OTA_SOURCE_MAP[_srcNorm]}" on edit of booking #${req.params.id}`);
-        }
-      }
+      // Source is stored exactly as entered. No OTA name normalisation —
+      // see booking creation route for the rationale.
 
       const booking = await storage.updateBooking(parseInt(req.params.id), validatedData);
 
