@@ -21766,9 +21766,13 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         if (!latestRateByCode[ru.roomCode] && ru.rate) latestRateByCode[ru.roomCode] = Number(ru.rate);
       }
 
+      // Normalise helper — must match the same normalisation used in aiosell.ts pushInventory
+      const normRT = (s: string) => (s || "").toLowerCase().replace(/[-_\s]+/g, "").trim();
+
       // Build per-mapping availability — mirrors autoSyncInventoryForProperty logic
       const roomTypeData = mappings.map(mapping => {
-        const matchingRooms = allRooms.filter(r => r.roomType === mapping.hostezeeRoomType);
+        const normMappingType = normRT(mapping.hostezeeRoomType);
+        const matchingRooms = allRooms.filter(r => normRT(r.roomType || "") === normMappingType);
         const blockedRoomIds = new Set(matchingRooms.filter(r => ["maintenance", "out-of-order", "blocked"].includes(r.status || "")).map(r => r.id));
         const activeRoomIds = matchingRooms.map(r => r.id).filter(id => !blockedRoomIds.has(id));
         const isDormitory = matchingRooms.some(r => activeRoomIds.includes(r.id) && r.roomCategory === "dormitory");
@@ -22553,8 +22557,11 @@ Respond ONLY with valid JSON (no markdown, no extra text):
       const mismatchDetails: { roomType: string; date: string; hostezee: number; aiosell: number }[] = [];
       let datesChecked = 0;
 
+      const normRoomType = (s: string) => (s || "").toLowerCase().replace(/[-_\s]+/g, "").trim();
+
       for (const mapping of mappings) {
-        const matchingRooms  = allRooms.filter(r => r.roomType === mapping.hostezeeRoomType);
+        const normMT = normRoomType(mapping.hostezeeRoomType);
+        const matchingRooms  = allRooms.filter(r => normRoomType(r.roomType || "") === normMT);
         const blockedRoomIds = new Set(
           matchingRooms.filter(r => ["maintenance", "out-of-order", "blocked"].includes(r.status || "")).map(r => r.id),
         );
