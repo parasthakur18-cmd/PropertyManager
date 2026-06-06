@@ -1144,13 +1144,28 @@ export function startInventoryHealthJob(): void {
 
         const reason = lastSync ? `stale (${ageHours}h ago)` : "never pushed";
         console.log(`[AIOSELL-HEALTH] prop=${config.propertyId} — ${reason}, triggering sync…`);
-        try {
-          await autoSyncInventoryForProperty(config.propertyId);
-          pushed++;
-          console.log(`[AIOSELL-HEALTH] prop=${config.propertyId} — sync complete ✓`);
-        } catch (err: any) {
+        // Retry up to 3 attempts: immediate → wait 30s → wait 60s
+        const HEALTH_RETRY_DELAYS = [30_000, 60_000]; // ms before attempt 2 and 3
+        let syncSucceeded = false;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            await autoSyncInventoryForProperty(config.propertyId);
+            pushed++;
+            console.log(`[AIOSELL-HEALTH] prop=${config.propertyId} — sync complete ✓ (attempt ${attempt}/3)`);
+            syncSucceeded = true;
+            break;
+          } catch (err: any) {
+            console.error(`[AIOSELL-HEALTH] prop=${config.propertyId} — sync failed (attempt ${attempt}/3): ${err.message}`);
+            if (attempt < 3) {
+              const delay = HEALTH_RETRY_DELAYS[attempt - 1];
+              console.log(`[AIOSELL-HEALTH] prop=${config.propertyId} — retrying in ${delay / 1000}s…`);
+              await new Promise(r => setTimeout(r, delay));
+            }
+          }
+        }
+        if (!syncSucceeded) {
           failed++;
-          console.error(`[AIOSELL-HEALTH] prop=${config.propertyId} — sync failed: ${err.message}`);
+          console.error(`[AIOSELL-HEALTH] prop=${config.propertyId} — all 3 attempts failed, skipping for this cycle`);
         }
 
         // Stagger between properties: wait 60s before the next one
