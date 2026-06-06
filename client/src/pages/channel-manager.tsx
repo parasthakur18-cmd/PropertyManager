@@ -1653,10 +1653,7 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
 
   const getRoomCount = (roomType: string) => {
     const normType = normaliseRoomType(roomType);
-    const matching = allRooms.filter(r => {
-      const normRoom = normaliseRoomType(r.roomType || "");
-      return normRoom === normType || normRoom.includes(normType) || normType.includes(normRoom);
-    });
+    const matching = allRooms.filter(r => normaliseRoomType(r.roomType || "") === normType);
     const isDorm = matching.some(r => (r.totalBeds || 1) > 1);
     if (isDorm) return matching.reduce((sum, r) => sum + (r.totalBeds || 1), 0);
     return matching.length;
