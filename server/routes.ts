@@ -9036,6 +9036,25 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       let orderData = insertOrderSchema.parse(sanitizedBody) as any;
       orderData.isTest = false;
 
+      // ISS-002: Recompute totalAmount from items on the server.
+      // Never trust the client-submitted value — a rounding error or
+      // tampered payload would silently persist into billing and reports.
+      if (Array.isArray(orderData.items) && orderData.items.length > 0) {
+        const serverTotal = orderData.items.reduce((sum: number, item: any) => {
+          const price = parseFloat(String(item.price ?? 0));
+          const qty = Math.max(1, parseInt(String(item.quantity ?? 1), 10));
+          return sum + price * qty;
+        }, 0);
+        const clientTotal = parseFloat(String(orderData.totalAmount ?? 0));
+        if (Math.abs(serverTotal - clientTotal) > 1) {
+          console.warn(
+            `[Orders] totalAmount mismatch — client=₹${clientTotal.toFixed(2)}, ` +
+            `server=₹${serverTotal.toFixed(2)} — overriding with server-computed value`
+          );
+        }
+        orderData.totalAmount = serverTotal.toFixed(2);
+      }
+
       // Backstop: ensure every order has a valid orderMode so reports stay
       // consistent. Prefer explicit body value, otherwise derive from type.
       const allowedModes = ["dine-in", "takeaway", "room"];

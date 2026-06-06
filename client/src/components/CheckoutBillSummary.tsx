@@ -67,6 +67,13 @@ export function CheckoutBillSummary({
     refetchInterval: 15000,
   });
 
+  // ISS-001: Detect merged checkout — the bill row holds the correct
+  // server-computed roomCharges across all merged bookings' date ranges.
+  const { data: existingBill } = useQuery<any>({
+    queryKey: ["/api/bills/booking", bookingId],
+    enabled: !!bookingId,
+  });
+
   const checkoutMutation = useMutation({
     mutationFn: async (data: any) => {
       const res = await apiRequest("/api/bookings/checkout", "POST", data);
@@ -112,20 +119,28 @@ export function CheckoutBillSummary({
   const bookingOrders = orders?.filter(o => o.bookingId === bookingId) || [];
   const bookingExtras = extraServices?.filter(e => e.bookingId === bookingId) || [];
 
+  // ISS-001: merged checkout detection
+  const isMergedCheckout = Array.isArray(existingBill?.mergedBookingIds) && existingBill.mergedBookingIds.length > 1;
+  const mergedCount = isMergedCheckout ? (existingBill.mergedBookingIds as number[]).length : 0;
+
   const checkInDate = new Date(booking.checkInDate);
   const checkOutDate = new Date(booking.checkOutDate);
   const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
-  
-  const roomCharges = isGroupBooking
-    ? bookingRooms.reduce((total, room) => {
-        const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) / bookingRooms.length : parseFloat(room.pricePerNight);
-        return total + (pricePerNight * nights);
-      }, 0)
-    : (() => {
-        const room = bookingRooms[0];
-        const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) : (room ? parseFloat(room.pricePerNight) : 0);
-        return pricePerNight * nights;
-      })();
+
+  // For merged checkouts use the server-computed roomCharges stored on the bill
+  // (those already account for every booking's date range and rate correctly).
+  const roomCharges = isMergedCheckout
+    ? parseFloat(existingBill.roomCharges || "0")
+    : isGroupBooking
+      ? bookingRooms.reduce((total, room) => {
+          const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) / bookingRooms.length : parseFloat(room.pricePerNight);
+          return total + (pricePerNight * nights);
+        }, 0)
+      : (() => {
+          const room = bookingRooms[0];
+          const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) : (room ? parseFloat(room.pricePerNight) : 0);
+          return pricePerNight * nights;
+        })();
   
   const displayPricePerNight = isGroupBooking
     ? 0
@@ -183,7 +198,11 @@ export function CheckoutBillSummary({
                 </Badge>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">{nights} night{nights !== 1 ? 's' : ''}</p>
+            <p className="text-xs text-muted-foreground">
+              {isMergedCheckout
+                ? `${mergedCount} stays merged`
+                : `${nights} night${nights !== 1 ? 's' : ''}`}
+            </p>
           </div>
         </div>
         <div className="text-sm text-muted-foreground">
@@ -234,9 +253,11 @@ export function CheckoutBillSummary({
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span>
-              {isGroupBooking 
-                ? `Room Charges (${bookingRooms.length} rooms × ${nights} nights)`
-                : `Room Charges (${nights} × ₹${displayPricePerNight.toFixed(2)})`}
+              {isMergedCheckout
+                ? `Room Charges (${mergedCount} stays merged)`
+                : isGroupBooking
+                  ? `Room Charges (${bookingRooms.length} rooms × ${nights} nights)`
+                  : `Room Charges (${nights} × ₹${displayPricePerNight.toFixed(2)})`}
             </span>
             <span className="font-mono" data-testid="text-checkout-room-charges">₹{roomCharges.toFixed(2)}</span>
           </div>
