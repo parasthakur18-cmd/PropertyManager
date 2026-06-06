@@ -816,6 +816,41 @@ export async function autoSyncInventoryForProperty(
           const physicallyAvailable = activeRoomIds.filter(id => !bookedRoomIds.has(id)).length;
           const available = Math.max(0, physicallyAvailable - tbsCount);
           dateAvailability[dateStr][mapping.aiosellRoomCode] = available;
+
+          // ── TODAY-ONLY diagnostic log ─────────────────────────────────────────
+          // Emitted once per sync for today's date so PM2 logs show exactly what
+          // each room type's availability is made of.  Helps diagnose cases where
+          // a room appears occupied in Hostezee but available is pushed as 1.
+          if (d === 0) {
+            const aiosellExcluded = activeBookings.filter(b => isAiosellSourced(b.source) && b.status !== "checked-out");
+            const bookedList = directBookings.filter(b => {
+              const cin2 = new Date(b.checkInDate); cin2.setHours(0,0,0,0);
+              const cout2 = new Date(b.checkOutDate); cout2.setHours(0,0,0,0);
+              return cin2 <= date && date < cout2 && (
+                (b.roomId && activeRoomIds.includes(b.roomId)) ||
+                (b.roomIds || []).some((rid: number) => activeRoomIds.includes(rid)) ||
+                (confirmedStayRoomIdsByBookingId.get(b.id) || []).some((rid: number) => activeRoomIds.includes(rid))
+              );
+            });
+            const skippedDirect = directBookings.filter(b => {
+              const cin2 = new Date(b.checkInDate); cin2.setHours(0,0,0,0);
+              const cout2 = new Date(b.checkOutDate); cout2.setHours(0,0,0,0);
+              const overlaps = cin2 <= date && date < cout2;
+              const hasRoom = (b.roomId && activeRoomIds.includes(b.roomId)) ||
+                (b.roomIds || []).some((rid: number) => activeRoomIds.includes(rid)) ||
+                (confirmedStayRoomIdsByBookingId.get(b.id) || []).some((rid: number) => activeRoomIds.includes(rid));
+              return !overlaps || !hasRoom;
+            });
+            console.log(
+              `[INV_DEBUG] property=${propertyId} roomCode=${mapping.aiosellRoomCode} date=${dateStr}` +
+              ` | activeRooms=[${activeRoomIds.join(",")}] blocked=[${blockedRoomIds.join(",")}]` +
+              ` | totalDirect=${directBookings.length} ota_excluded=${aiosellExcluded.length}` +
+              ` | countedBookings=${bookedList.length}(ids:[${bookedList.map(b=>b.id).join(",")}])` +
+              ` | skippedDirect=${skippedDirect.length}(ids:[${skippedDirect.map(b=>b.id+" cin="+new Date(b.checkInDate).toISOString().slice(0,10)+" cout="+b.checkOutDate+" roomId="+b.roomId+" src="+b.source).join(" | ")}])` +
+              ` | bookedRoomIds=[${[...bookedRoomIds].join(",")}] tbs=${tbsCount}` +
+              ` | physAvail=${physicallyAvailable} available=${available}`
+            );
+          }
         }
       }
     }

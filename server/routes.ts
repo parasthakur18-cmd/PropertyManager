@@ -21443,6 +21443,114 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
     }
   });
 
+  // GET /api/aiosell/debug-inventory?propertyId=X&date=YYYY-MM-DD
+  // Returns a full breakdown of what autoSyncInventoryForProperty would calculate for a specific
+  // date — which bookings are fetched, which are excluded as OTA-sourced, and the per-room count.
+  // Use this to diagnose inventory mismatches on the live server WITHOUT triggering a push.
+  app.get("/api/aiosell/debug-inventory", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || !canAccessProperty(tenant, propertyId))
+        return res.status(403).json({ message: "Access denied" });
+
+      const targetDateStr = (req.query.date as string) || new Date().toISOString().split("T")[0];
+      const targetDate = new Date(targetDateStr + "T00:00:00");
+      targetDate.setHours(0, 0, 0, 0);
+
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "AioSell not configured" });
+      const mappings = await getRoomMappingsForConfig(config.id);
+      const allRooms = await db.select().from(rooms).where(eq(rooms.propertyId, propertyId));
+
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const horizon = new Date(today); horizon.setDate(horizon.getDate() + 90);
+
+      const activeBookings = await db.select({
+        id: bookings.id, roomId: bookings.roomId, roomIds: bookings.roomIds,
+        checkInDate: bookings.checkInDate, checkOutDate: bookings.checkOutDate,
+        status: bookings.status, bedsBooked: bookings.bedsBooked, source: bookings.source,
+      }).from(bookings).where(
+        and(
+          eq(bookings.propertyId, propertyId),
+          inArray(bookings.status, ["pending", "confirmed", "checked-in"]),
+          lte(bookings.checkInDate, horizon),
+          gte(bookings.checkOutDate, targetDate),
+        )
+      );
+
+      const OTA_BARE_NORMALISED = new Set([
+        "bookingcom", "booking", "mmt", "makemytrip", "makeymytrip",
+        "airbnb", "agoda", "expedia", "goibibo", "yatra", "viacom",
+        "ixigo", "cleartrip", "hostelworld", "ota",
+      ]);
+      const isAiosellSourced = (src: string | null | undefined): boolean => {
+        if (!src || typeof src !== "string") return false;
+        if (src.startsWith("aiosell-")) return true;
+        return OTA_BARE_NORMALISED.has(src.toLowerCase().replace(/[\s.\-_]+/g, ""));
+      };
+
+      const directBookings = activeBookings.filter(b => !isAiosellSourced(b.source));
+      const otaSourced = activeBookings.filter(b => isAiosellSourced(b.source));
+
+      const perRoom = mappings.map(mapping => {
+        const normType = mapping.hostezeeRoomType.toLowerCase().replace(/[-_]+/g, " ").trim();
+        const matchingRooms = allRooms.filter(r => (r.roomType || "").toLowerCase().replace(/[-_]+/g, " ").trim() === normType);
+        const blockedIds = matchingRooms.filter(r => ["maintenance", "out-of-order", "blocked"].includes(r.status || "")).map(r => r.id);
+        const activeRoomIds = matchingRooms.map(r => r.id).filter(id => !blockedIds.includes(id));
+
+        const bookedRoomIds: number[] = [];
+        const countedBookings: any[] = [];
+        const skippedBookings: any[] = [];
+
+        for (const b of directBookings) {
+          const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
+          const cout = new Date(b.checkOutDate as any); cout.setHours(0, 0, 0, 0);
+          const overlaps = cin <= targetDate && targetDate < cout;
+          const inRoom = (b.roomId && activeRoomIds.includes(b.roomId)) ||
+            (b.roomIds || []).some((rid: number) => activeRoomIds.includes(rid));
+          const reason = !overlaps
+            ? `dates_no_overlap (cin=${cin.toISOString().slice(0,10)} cout=${cout.toISOString().slice(0,10)} target=${targetDateStr})`
+            : !inRoom
+              ? `no_room_match (booking.roomId=${b.roomId} booking.roomIds=${JSON.stringify(b.roomIds)} activeRooms=[${activeRoomIds}])`
+              : "counted";
+
+          if (overlaps && inRoom) {
+            bookedRoomIds.push(b.roomId as number);
+            countedBookings.push({ id: b.id, cin: cin.toISOString().slice(0,10), cout: cout.toISOString().slice(0,10), roomId: b.roomId, source: b.source, status: b.status });
+          } else {
+            skippedBookings.push({ id: b.id, cin: cin.toISOString().slice(0,10), cout: cout.toISOString().slice(0,10), roomId: b.roomId, source: b.source, status: b.status, reason });
+          }
+        }
+
+        const physicallyAvailable = activeRoomIds.filter(id => !bookedRoomIds.includes(id)).length;
+        return {
+          roomCode: mapping.aiosellRoomCode,
+          hostezeeRoomType: mapping.hostezeeRoomType,
+          matchingRoomIds: matchingRooms.map(r => ({ id: r.id, number: r.roomNumber, status: r.status })),
+          blockedIds,
+          activeRoomIds,
+          physicallyAvailable,
+          countedBookings,
+          skippedBookings,
+        };
+      });
+
+      res.json({
+        propertyId,
+        targetDate: targetDateStr,
+        allActiveBookings: activeBookings.length,
+        directBookings: directBookings.length,
+        otaSourcedExcluded: otaSourced.map(b => ({ id: b.id, source: b.source, roomId: b.roomId, status: b.status, cin: b.checkInDate, cout: b.checkOutDate })),
+        perRoom,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // POST /api/aiosell/room-control/push-single-room
   // Triggers a full inventory sync for the property (which pushes actual count for the
   // opened room and 0/stop-sell for still-closed rooms) and returns the result.
