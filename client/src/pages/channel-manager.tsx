@@ -3127,6 +3127,351 @@ interface InvestigatorResult {
   generatedAt: string;
 }
 
+// ── Inventory Calculation Verification Tab ────────────────────────────────────
+
+interface VerifRoom {
+  roomType: string;
+  roomCode: string;
+  isDormitory: boolean;
+  totalRooms: number;
+  directOccupied: number;
+  otaOccupied: number;
+  tbsRooms: number;
+  hostezeeCalculated: number;
+  stopSell: boolean;
+  directBookings: any[];
+  otaBookings: any[];
+  lastPush: { available: number; pushTime: string; logId: number; aiosellResponse: string | null; aiosellSuccess: boolean; rawResponse: any } | null;
+  payloadAvailable: number | null;
+  mismatch: boolean;
+}
+
+interface VerifData {
+  propertyId: number;
+  date: string;
+  generatedAt: string;
+  config: { hotelCode: string; pmsName: string; isSandbox: boolean };
+  hasMismatch: boolean;
+  mismatchCount: number;
+  neverPushedCount: number;
+  rooms: VerifRoom[];
+}
+
+function VerifRoomCard({ room }: { room: VerifRoom }) {
+  const [open, setOpen] = useState(false);
+  const unitLabel = room.isDormitory ? "beds" : "rooms";
+
+  const borderCls = room.mismatch
+    ? "border-red-300 dark:border-red-700"
+    : room.lastPush === null
+    ? "border-amber-300 dark:border-amber-700"
+    : "border-emerald-200 dark:border-emerald-800";
+
+  const headerBg = room.mismatch
+    ? "bg-red-50 dark:bg-red-950/30"
+    : room.lastPush === null
+    ? "bg-amber-50 dark:bg-amber-950/30"
+    : "bg-emerald-50 dark:bg-emerald-950/20";
+
+  const statusBadge = room.mismatch ? (
+    <Badge className="text-[10px] bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300 border border-red-200">⚠ Mismatch</Badge>
+  ) : room.lastPush === null ? (
+    <Badge className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300 border border-amber-200">⏳ Never Pushed</Badge>
+  ) : (
+    <Badge className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 border border-emerald-200">✓ In Sync</Badge>
+  );
+
+  return (
+    <div className={`border rounded-lg overflow-hidden ${borderCls}`}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        data-testid={`card-verif-room-${room.roomCode}`}
+        className={`w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-black/5 dark:hover:bg-white/5 transition-colors ${headerBg}`}
+      >
+        <div className="flex items-center gap-3 min-w-0 flex-wrap">
+          {open ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+          <span className="font-semibold text-sm truncate">{room.roomType}</span>
+          <code className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono hidden sm:block">{room.roomCode}</code>
+          {room.isDormitory && <Badge variant="outline" className="text-[10px] text-purple-600 border-purple-300 shrink-0">🛏 Dorm</Badge>}
+          {room.stopSell && <Badge variant="outline" className="text-[10px] text-orange-600 border-orange-300 shrink-0">🚫 Stop-Sell</Badge>}
+          {statusBadge}
+        </div>
+        <div className="flex items-center gap-4 shrink-0 text-sm">
+          <span className="text-muted-foreground text-xs hidden md:block">Avail:</span>
+          <span className={`font-bold text-base ${room.hostezeeCalculated === 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+            {room.hostezeeCalculated}
+          </span>
+        </div>
+      </button>
+
+      {open && (
+        <div className="border-t divide-y divide-border bg-background/60">
+          {/* Occupancy grid */}
+          <div className="px-4 py-3 grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {[
+              { label: `Total ${unitLabel}`, value: room.totalRooms, cls: "text-foreground" },
+              { label: "Direct occupied", value: room.directOccupied, cls: "text-blue-600 dark:text-blue-400" },
+              { label: "OTA occupied", value: room.otaOccupied, cls: "text-purple-600 dark:text-purple-400" },
+              { label: "TBS (unassigned)", value: room.tbsRooms, cls: "text-amber-600 dark:text-amber-400" },
+              { label: "Calculated avail", value: room.hostezeeCalculated, cls: room.hostezeeCalculated === 0 ? "text-red-600 dark:text-red-400 font-bold" : "text-emerald-600 dark:text-emerald-400 font-bold" },
+            ].map(item => (
+              <div key={item.label} className="rounded-lg border bg-muted/30 px-3 py-2 text-center">
+                <p className={`text-xl font-bold ${item.cls}`}>{item.value}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{item.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Payload sent */}
+          <div className="px-4 py-3 space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Payload Sent to Aiosell</p>
+            {room.lastPush ? (
+              <div className="space-y-2">
+                <pre className="text-xs font-mono bg-muted rounded-md px-3 py-2 overflow-x-auto whitespace-pre-wrap">{JSON.stringify({
+                  roomCode: room.roomCode,
+                  available: room.lastPush.available,
+                }, null, 2)}</pre>
+                <p className="text-xs text-muted-foreground">
+                  Sent: <span className="font-mono">{new Date(room.lastPush.pushTime).toLocaleString()}</span>
+                  {" · "}Log #{room.lastPush.logId}
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-amber-600 dark:text-amber-400">No inventory push found for this date — room has never been synced to Aiosell.</p>
+            )}
+          </div>
+
+          {/* Aiosell response */}
+          <div className="px-4 py-3 space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Aiosell Response</p>
+            {room.lastPush ? (
+              <div className="flex items-center gap-2">
+                {room.lastPush.aiosellSuccess
+                  ? <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
+                  : <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />}
+                <span className={`text-sm font-medium ${room.lastPush.aiosellSuccess ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
+                  {room.lastPush.aiosellSuccess ? "Success" : "Failed"}
+                  {room.lastPush.aiosellResponse ? ` — ${room.lastPush.aiosellResponse}` : ""}
+                </span>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">—</p>
+            )}
+          </div>
+
+          {/* Comparison */}
+          <div className="px-4 py-3 space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Three-Way Comparison</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: "Hostezee\nAvailability", value: room.hostezeeCalculated, color: "blue" },
+                { label: "Payload\nAvailability", value: room.payloadAvailable, color: room.payloadAvailable !== null && room.payloadAvailable !== room.hostezeeCalculated ? "red" : "emerald" },
+                { label: "Aiosell\nResponse", value: room.lastPush?.aiosellSuccess ? "OK" : room.lastPush ? "Error" : "—", color: room.lastPush?.aiosellSuccess ? "emerald" : room.lastPush ? "red" : "muted" },
+              ].map(col => (
+                <div key={col.label} className={`rounded-lg border px-3 py-2 text-center ${
+                  col.color === "red" ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/20"
+                  : col.color === "emerald" ? "border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/20"
+                  : col.color === "blue" ? "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/20"
+                  : "border-border bg-muted/20"
+                }`}>
+                  <p className={`text-lg font-bold ${
+                    col.color === "red" ? "text-red-700 dark:text-red-400"
+                    : col.color === "emerald" ? "text-emerald-700 dark:text-emerald-400"
+                    : col.color === "blue" ? "text-blue-700 dark:text-blue-400"
+                    : "text-muted-foreground"
+                  }`}>{col.value ?? "—"}</p>
+                  <p className="text-[10px] text-muted-foreground whitespace-pre-line leading-tight mt-0.5">{col.label}</p>
+                </div>
+              ))}
+            </div>
+            {room.mismatch && (
+              <div className="flex items-start gap-2 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-3 py-2">
+                <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                <p className="text-xs text-red-700 dark:text-red-300">
+                  <strong>Mismatch detected.</strong> Hostezee calculates {room.hostezeeCalculated} but pushed {room.payloadAvailable} to Aiosell. Run a fresh inventory push to correct this.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Booking lists */}
+          {(room.directBookings.length > 0 || room.otaBookings.length > 0) && (
+            <div className="px-4 py-3 space-y-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Contributing Bookings</p>
+              {room.directBookings.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-blue-700 dark:text-blue-400 mb-1">Direct / Walk-in ({room.directBookings.length})</p>
+                  <div className="space-y-1">
+                    {room.directBookings.map((b: any, i: number) => (
+                      <div key={i} data-testid={`row-direct-booking-${b.bookingId}`} className="flex flex-wrap items-center gap-2 text-xs font-mono bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900 px-2 py-1 rounded">
+                        <span className="text-muted-foreground">#{b.bookingId}</span>
+                        <span className="font-sans font-medium">{b.guestName || "—"}</span>
+                        <Badge variant="outline" className="text-[10px]">{b.source || "direct"}</Badge>
+                        {b.beds && <span className="text-muted-foreground">{b.beds} bed{b.beds !== 1 ? "s" : ""}</span>}
+                        {b.rooms && <span className="text-muted-foreground">{b.rooms} room{b.rooms !== 1 ? "s" : ""}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {room.otaBookings.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-purple-700 dark:text-purple-400 mb-1">OTA / Aiosell-sourced ({room.otaBookings.length}) — excluded from push, Aiosell tracks these</p>
+                  <div className="space-y-1">
+                    {room.otaBookings.map((b: any, i: number) => (
+                      <div key={i} data-testid={`row-ota-booking-${b.bookingId}`} className="flex flex-wrap items-center gap-2 text-xs font-mono bg-purple-50 dark:bg-purple-950/20 border border-purple-100 dark:border-purple-900 px-2 py-1 rounded">
+                        <span className="text-muted-foreground">#{b.bookingId}</span>
+                        <span className="font-sans font-medium">{b.guestName || "—"}</span>
+                        <Badge variant="outline" className="text-[10px]">{b.source || "ota"}</Badge>
+                        {b.beds && <span className="text-muted-foreground">{b.beds} bed{b.beds !== 1 ? "s" : ""}</span>}
+                        {b.rooms && <span className="text-muted-foreground">{b.rooms} room{b.rooms !== 1 ? "s" : ""}</span>}
+                        {b.tbsCount > 0 && <span className="text-amber-600 dark:text-amber-400">TBS ×{b.tbsCount}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InventoryVerificationTab({ propertyId }: { propertyId: number }) {
+  const todayStr = new Date().toISOString().split("T")[0];
+  const [date, setDate] = useState(todayStr);
+
+  const { data, isLoading, error, refetch, isFetching } = useQuery<VerifData>({
+    queryKey: ["/api/aiosell/inventory-verification", propertyId, date],
+    queryFn: async () => {
+      const res = await fetch(`/api/aiosell/inventory-verification?propertyId=${propertyId}&date=${date}`, { credentials: "include" });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed to load"); }
+      return res.json();
+    },
+    enabled: !!propertyId,
+    staleTime: 30_000,
+  });
+
+  return (
+    <div className="space-y-4 p-4">
+      {/* Header */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <BarChart2 className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            Inventory Calculation Verification
+          </CardTitle>
+          <CardDescription>
+            For every room type, shows exactly how Hostezee computed availability, what was pushed to Aiosell, and the Aiosell response. Any mismatch is flagged automatically.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Date</label>
+              <input
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                data-testid="input-verif-date"
+                className="rounded-md border bg-background text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              data-testid="button-verif-refresh"
+            >
+              {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Refresh
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDate(todayStr)}
+              disabled={date === todayStr}
+              data-testid="button-verif-today"
+            >
+              Today
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Loading */}
+      {isLoading && (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{(error as Error).message}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Summary */}
+      {data && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: "Date", value: data.date, cls: "text-foreground" },
+              { label: "Room Types", value: data.rooms.length, cls: "text-foreground" },
+              { label: "Mismatches", value: data.mismatchCount, cls: data.mismatchCount > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400" },
+              { label: "Never Pushed", value: data.neverPushedCount, cls: data.neverPushedCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground" },
+            ].map(s => (
+              <Card key={s.label} className={`border ${data.mismatchCount > 0 && s.label === "Mismatches" ? "border-red-200 dark:border-red-800" : ""}`} data-testid={`stat-verif-${s.label.toLowerCase().replace(/\s/g,"-")}`}>
+                <CardContent className="pt-4 pb-3 text-center">
+                  <p className={`text-2xl font-bold ${s.cls}`}>{s.value}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{s.label}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {data.hasMismatch && (
+            <Alert className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20">
+              <AlertCircle className="h-4 w-4 text-red-600" />
+              <AlertDescription className="text-red-700 dark:text-red-300">
+                <strong>{data.mismatchCount} room type{data.mismatchCount !== 1 ? "s have" : " has"} a mismatch</strong> between what Hostezee calculates and what was last pushed to Aiosell for {data.date}.
+                Run a fresh inventory push from the <button className="underline font-medium" onClick={() => { const btn = document.querySelector('[data-testid="tab-push-inventory"]') as HTMLButtonElement | null; btn?.click(); }}>Push Inventory</button> tab to correct.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {data.neverPushedCount > 0 && !data.hasMismatch && (
+            <Alert className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-700 dark:text-amber-300">
+                {data.neverPushedCount} room type{data.neverPushedCount !== 1 ? "s have" : " has"} never been pushed to Aiosell for this date.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Per-room cards */}
+          <div className="space-y-3">
+            {data.rooms.map(room => (
+              <VerifRoomCard key={room.roomCode} room={room} />
+            ))}
+          </div>
+
+          <p className="text-xs text-muted-foreground text-center">
+            Generated {new Date(data.generatedAt).toLocaleString()} · Hotel code: {data.config.hotelCode}
+            {data.config.isSandbox && <span className="ml-1 text-amber-500">[Sandbox]</span>}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 const INVESTIGATOR_PRESETS = [
   "Why is inventory different on OTA vs Hostezee?",
   "Why is this room showing unavailable?",
@@ -4011,6 +4356,7 @@ export default function ChannelManager() {
             <TabsTrigger value="ai-auditor" data-testid="tab-ai-auditor" className="flex-shrink-0 text-purple-700 dark:text-purple-400 gap-1"><BrainCircuit className="h-3.5 w-3.5" />AI Auditor</TabsTrigger>
             <TabsTrigger value="ota-test" data-testid="tab-ota-test" className="flex-shrink-0 text-indigo-700 dark:text-indigo-400 gap-1"><TestTube2 className="h-3.5 w-3.5" />OTA Test</TabsTrigger>
             <TabsTrigger value="reconciliation" data-testid="tab-reconciliation" className="flex-shrink-0 text-teal-700 dark:text-teal-400 gap-1"><Scale className="h-3.5 w-3.5" />Reconciliation</TabsTrigger>
+            <TabsTrigger value="inventory-verification" data-testid="tab-inventory-verification" className="flex-shrink-0 text-teal-700 dark:text-teal-400 gap-1"><BarChart2 className="h-3.5 w-3.5" />Inv. Verification</TabsTrigger>
             <TabsTrigger value="ai-investigator" data-testid="tab-ai-investigator" className="flex-shrink-0 text-violet-700 dark:text-violet-400 gap-1"><Bot className="h-3.5 w-3.5" />AI Investigator</TabsTrigger>
           </TabsList>
           <TabsContent value="settings"><SettingsTab propertyId={propertyId} /></TabsContent>
@@ -4024,6 +4370,7 @@ export default function ChannelManager() {
           <TabsContent value="ai-auditor"><AIAuditorTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="ota-test"><OtaTestTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="reconciliation"><InventoryReconciliationTab propertyId={propertyId} /></TabsContent>
+          <TabsContent value="inventory-verification"><InventoryVerificationTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="ai-investigator"><AIInvestigatorTab propertyId={propertyId} /></TabsContent>
         </Tabs>
         </>

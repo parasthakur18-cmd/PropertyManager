@@ -23057,6 +23057,254 @@ Respond ONLY with valid JSON (no markdown, no extra text):
     }
   });
 
+  // ── Inventory Calculation Verification ──────────────────────────────────────
+
+  /**
+   * GET /api/aiosell/inventory-verification?propertyId=X&date=YYYY-MM-DD
+   * Per-room-type breakdown: total rooms, direct/OTA/TBS occupancy, Hostezee
+   * calculated availability, last-push payload, Aiosell response, and
+   * automatic mismatch detection.
+   */
+  app.get("/api/aiosell/inventory-verification", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || !canAccessProperty(tenant, propertyId))
+        return res.status(403).json({ message: "Access denied" });
+
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "Aiosell not configured for this property" });
+
+      const dateStr = (req.query.date as string) || new Date().toISOString().split("T")[0];
+      const date = new Date(dateStr); date.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(date); tomorrow.setDate(date.getDate() + 1);
+
+      const [mappings, allRooms] = await Promise.all([
+        getRoomMappingsForConfig(config.id),
+        db.select().from(rooms).where(eq(rooms.propertyId, propertyId)),
+      ]);
+
+      const activeBookings = await db.select({
+        id: bookings.id, roomId: bookings.roomId, roomIds: bookings.roomIds,
+        checkInDate: bookings.checkInDate, checkOutDate: bookings.checkOutDate,
+        status: bookings.status, bedsBooked: bookings.bedsBooked,
+        numberOfGuests: bookings.numberOfGuests, guestName: bookings.guestName,
+        source: bookings.source, externalBookingId: bookings.externalBookingId,
+      }).from(bookings).where(and(
+        eq(bookings.propertyId, propertyId),
+        inArray(bookings.status, ["pending", "confirmed", "checked-in"]),
+        lte(bookings.checkInDate, tomorrow),
+        gte(bookings.checkOutDate, date),
+      ));
+
+      const OTA_BARE_NORMALISED = new Set([
+        "bookingcom", "booking", "mmt", "makemytrip", "airbnb", "agoda",
+        "expedia", "goibibo", "yatra", "viacom", "ixigo", "cleartrip", "hostelworld", "ota",
+      ]);
+      const isAiosellSourced = (src: string | null | undefined): boolean => {
+        if (!src || typeof src !== "string") return false;
+        if (src.startsWith("aiosell-")) return true;
+        return OTA_BARE_NORMALISED.has(src.toLowerCase().replace(/[\s.\-_]+/g, ""));
+      };
+
+      const activeBookingIds = activeBookings.map(b => b.id);
+      const tbsStaysByBookingId = new Map<number, { aiosellRoomCode: string }[]>();
+      const confirmedStayRoomIdsByBookingId = new Map<number, number[]>();
+
+      if (activeBookingIds.length > 0) {
+        const [tbsStays, confirmedStays, restrictions] = await Promise.all([
+          db.select({ bookingId: bookingRoomStays.bookingId, aiosellRoomCode: bookingRoomStays.aiosellRoomCode })
+            .from(bookingRoomStays).where(and(inArray(bookingRoomStays.bookingId, activeBookingIds), isNull(bookingRoomStays.roomId))),
+          db.select({ bookingId: bookingRoomStays.bookingId, roomId: bookingRoomStays.roomId })
+            .from(bookingRoomStays).where(and(inArray(bookingRoomStays.bookingId, activeBookingIds), isNotNull(bookingRoomStays.roomId))),
+          db.select().from(aiosellInventoryRestrictions).where(and(
+            eq(aiosellInventoryRestrictions.configId, config.id),
+            lte(aiosellInventoryRestrictions.startDate, dateStr),
+            gte(aiosellInventoryRestrictions.endDate, dateStr),
+          )),
+        ]);
+        for (const s of tbsStays) {
+          if (!s.aiosellRoomCode) continue;
+          if (!tbsStaysByBookingId.has(s.bookingId)) tbsStaysByBookingId.set(s.bookingId, []);
+          tbsStaysByBookingId.get(s.bookingId)!.push({ aiosellRoomCode: s.aiosellRoomCode });
+        }
+        for (const s of confirmedStays) {
+          if (s.roomId == null) continue;
+          if (!confirmedStayRoomIdsByBookingId.has(s.bookingId)) confirmedStayRoomIdsByBookingId.set(s.bookingId, []);
+          confirmedStayRoomIdsByBookingId.get(s.bookingId)!.push(s.roomId);
+        }
+        const stopSellCodes = new Set<string>();
+        for (const r of restrictions) {
+          if (!r.stopSell) continue;
+          const m = mappings.find(mm => mm.id === r.roomMappingId);
+          if (m) stopSellCodes.add(m.aiosellRoomCode);
+        }
+        // attach to outer scope via closure — re-declare below
+        (activeBookings as any).__stopSellCodes = stopSellCodes;
+      }
+      const stopSellCodes: Set<string> = (activeBookings as any).__stopSellCodes || new Set();
+
+      // Last 300 successful inventory push logs → build per-roomCode last-push lookup
+      const pushLogs = await db.select({
+        id: aiosellSyncLogs.id, status: aiosellSyncLogs.status,
+        createdAt: aiosellSyncLogs.createdAt, requestPayload: aiosellSyncLogs.requestPayload,
+        responsePayload: aiosellSyncLogs.responsePayload, errorMessage: aiosellSyncLogs.errorMessage,
+      }).from(aiosellSyncLogs).where(and(
+        eq(aiosellSyncLogs.configId, config.id),
+        eq(aiosellSyncLogs.syncType, "inventory_push"),
+      )).orderBy(desc(aiosellSyncLogs.createdAt)).limit(300);
+
+      const lastPushed: Record<string, { available: number; pushTime: string; logId: number; aiosellResponse: string | null; aiosellSuccess: boolean; rawResponse: any }> = {};
+      for (const log of pushLogs) {
+        const payload = log.requestPayload as any;
+        if (!payload?.updates) continue;
+        for (const update of payload.updates) {
+          if (!update.rooms || !update.startDate) continue;
+          const sD = new Date(update.startDate); sD.setHours(0, 0, 0, 0);
+          const eD = update.endDate ? new Date(update.endDate) : new Date(update.startDate); eD.setHours(0, 0, 0, 0);
+          if (date < sD || date > eD) continue;
+          for (const room of (update.rooms as Array<{ roomCode: string; available: number }>) || []) {
+            if (!room.roomCode || lastPushed[room.roomCode]) continue;
+            lastPushed[room.roomCode] = {
+              available: room.available,
+              pushTime: log.createdAt?.toString() || "",
+              logId: log.id,
+              aiosellResponse: (log.responsePayload as any)?.message ?? null,
+              aiosellSuccess: log.status === "success",
+              rawResponse: log.responsePayload,
+            };
+          }
+        }
+      }
+
+      const normalise = (s: string) => s.toLowerCase().replace(/[-_\s]+/g, " ").trim();
+
+      const roomResults = mappings.map(mapping => {
+        const normType = normalise(mapping.hostezeeRoomType);
+        const matchingRooms = allRooms.filter(r =>
+          normalise(r.roomType || "") === normType ||
+          normalise(r.roomType || "").includes(normType) ||
+          normType.includes(normalise(r.roomType || ""))
+        );
+        const blockedRoomIds = new Set(matchingRooms.filter(r => ["maintenance", "out-of-order", "blocked"].includes(r.status || "")).map(r => r.id));
+        const activeRoomIds = matchingRooms.map(r => r.id).filter(id => !blockedRoomIds.has(id));
+        const isDormitory = matchingRooms.some(r => activeRoomIds.includes(r.id) && r.roomCategory === "dormitory");
+        const stopSell = stopSellCodes.has(mapping.aiosellRoomCode);
+
+        let hostezeeCalculated = 0;
+        const directBookingsDetail: any[] = [];
+        const otaBookingsDetail: any[] = [];
+        let tbsRooms = 0;
+        let directOccupied = 0;
+        let otaOccupied = 0;
+
+        if (isDormitory) {
+          const totalBeds = matchingRooms.filter(r => activeRoomIds.includes(r.id)).reduce((s, r) => s + (r.totalBeds || 1), 0);
+          const bedsBookedByRoom: Record<number, number> = {};
+
+          for (const b of activeBookings) {
+            const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
+            const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
+            if (!(cin <= date && date < cout)) continue;
+
+            const stayRoomIds = confirmedStayRoomIdsByBookingId.get(b.id) || [];
+            const tbsForBooking = tbsStaysByBookingId.get(b.id) || [];
+            const isOta = isAiosellSourced(b.source);
+
+            if (stayRoomIds.length > 0) {
+              const matched = stayRoomIds.filter(rid => activeRoomIds.includes(rid));
+              for (const rid of matched) bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + 1;
+              if (matched.length > 0) {
+                const entry = { bookingId: b.id, guestName: b.guestName, source: b.source, externalId: b.externalBookingId, beds: matched.length };
+                isOta ? (otaBookingsDetail.push(entry), otaOccupied += matched.length) : (directBookingsDetail.push(entry), directOccupied += matched.length);
+              }
+            } else {
+              const beds = b.bedsBooked || b.numberOfGuests || 1;
+              const bookingRoomIds: number[] = [];
+              if (b.roomId && activeRoomIds.includes(b.roomId)) { bedsBookedByRoom[b.roomId] = (bedsBookedByRoom[b.roomId] || 0) + beds; bookingRoomIds.push(b.roomId); }
+              if (b.roomIds) for (const rid of b.roomIds) if (activeRoomIds.includes(rid)) { bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + beds; bookingRoomIds.push(rid); }
+              if (bookingRoomIds.length > 0) {
+                const entry = { bookingId: b.id, guestName: b.guestName, source: b.source, externalId: b.externalBookingId, beds };
+                isOta ? (otaBookingsDetail.push(entry), otaOccupied += beds) : (directBookingsDetail.push(entry), directOccupied += beds);
+              }
+            }
+
+            if (!b.roomId && tbsForBooking.some(s => s.aiosellRoomCode === mapping.aiosellRoomCode))
+              tbsRooms += tbsForBooking.filter(s => s.aiosellRoomCode === mapping.aiosellRoomCode).length;
+          }
+
+          for (const rid of activeRoomIds) {
+            const cap = matchingRooms.find(r => r.id === rid)?.totalBeds || 0;
+            if (cap > 0 && (bedsBookedByRoom[rid] || 0) > cap) bedsBookedByRoom[rid] = cap;
+          }
+          const bedsBooked = Object.values(bedsBookedByRoom).reduce((s, n) => s + n, 0);
+          hostezeeCalculated = stopSell ? 0 : Math.max(0, totalBeds - bedsBooked - tbsRooms);
+          const lp = lastPushed[mapping.aiosellRoomCode] || null;
+          return {
+            roomType: mapping.hostezeeRoomType, roomCode: mapping.aiosellRoomCode,
+            isDormitory: true, totalRooms: totalBeds,
+            directOccupied, otaOccupied, tbsRooms, hostezeeCalculated, stopSell,
+            directBookings: directBookingsDetail, otaBookings: otaBookingsDetail,
+            lastPush: lp, payloadAvailable: lp?.available ?? null,
+            mismatch: lp !== null && lp.available !== hostezeeCalculated,
+          };
+        } else {
+          const totalRooms = activeRoomIds.length;
+          const bookedRoomIds = new Set<number>();
+
+          for (const b of activeBookings) {
+            const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
+            const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
+            if (!(cin <= date && date < cout)) continue;
+
+            const bookedBefore = new Set(bookedRoomIds);
+            if (b.roomId && activeRoomIds.includes(b.roomId)) bookedRoomIds.add(b.roomId);
+            if (b.roomIds) for (const rid of b.roomIds) if (activeRoomIds.includes(rid)) bookedRoomIds.add(rid);
+            const stayRoomIds = confirmedStayRoomIdsByBookingId.get(b.id) || [];
+            for (const rid of stayRoomIds) if (activeRoomIds.includes(rid)) bookedRoomIds.add(rid);
+            const tbsForBooking = tbsStaysByBookingId.get(b.id) || [];
+            const myTbs = tbsForBooking.filter(s => s.aiosellRoomCode === mapping.aiosellRoomCode).length;
+            tbsRooms += myTbs;
+
+            const isOta = isAiosellSourced(b.source);
+            const addedRooms = [...bookedRoomIds].filter(id => !bookedBefore.has(id));
+            if (addedRooms.length > 0 || myTbs > 0) {
+              const entry = { bookingId: b.id, guestName: b.guestName, source: b.source, externalId: b.externalBookingId, rooms: addedRooms.length, tbsCount: myTbs };
+              if (isOta || myTbs > 0) { otaBookingsDetail.push(entry); otaOccupied += addedRooms.length + myTbs; }
+              else { directBookingsDetail.push(entry); directOccupied += addedRooms.length; }
+            }
+          }
+
+          const physicallyAvailable = activeRoomIds.filter(id => !bookedRoomIds.has(id)).length;
+          hostezeeCalculated = stopSell ? 0 : Math.max(0, physicallyAvailable - tbsRooms);
+          const lp = lastPushed[mapping.aiosellRoomCode] || null;
+          return {
+            roomType: mapping.hostezeeRoomType, roomCode: mapping.aiosellRoomCode,
+            isDormitory: false, totalRooms,
+            directOccupied, otaOccupied, tbsRooms, hostezeeCalculated, stopSell,
+            directBookings: directBookingsDetail, otaBookings: otaBookingsDetail,
+            lastPush: lp, payloadAvailable: lp?.available ?? null,
+            mismatch: lp !== null && lp.available !== hostezeeCalculated,
+          };
+        }
+      });
+
+      res.json({
+        propertyId, date: dateStr, generatedAt: new Date().toISOString(),
+        config: { hotelCode: config.hotelCode, pmsName: config.pmsName, isSandbox: config.isSandbox },
+        hasMismatch: roomResults.some(r => r.mismatch),
+        mismatchCount: roomResults.filter(r => r.mismatch).length,
+        neverPushedCount: roomResults.filter(r => r.lastPush === null).length,
+        rooms: roomResults,
+      });
+    } catch (err: any) {
+      console.error("[INVENTORY-VERIFICATION]", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ── Connectivity Audit ──────────────────────────────────────────────────────
 
   /**
