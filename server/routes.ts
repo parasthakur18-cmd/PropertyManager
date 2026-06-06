@@ -23944,10 +23944,10 @@ Respond ONLY with valid JSON (no markdown, no extra text):
 
       const roomResults = mappings.map(mapping => {
         const normType = normalise(mapping.hostezeeRoomType);
-        const matchingRooms = allRooms.filter(r => {
-          const rn = normalise(r.roomType || "");
-          return rn === normType || rn.includes(normType) || normType.includes(rn);
-        });
+        // Exact match only — partial substring matching caused cross-type pollution
+        // e.g. "deluxe double room with balcony" incorrectly matched by
+        // "double room with balcony" mapping via rn.includes(normType)
+        const matchingRooms = allRooms.filter(r => normalise(r.roomType || "") === normType);
         const blockedRoomIds = new Set(
           matchingRooms.filter(r => ["maintenance", "out-of-order", "blocked"].includes(r.status || "")).map(r => r.id)
         );
