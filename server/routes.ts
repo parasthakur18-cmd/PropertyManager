@@ -23969,15 +23969,17 @@ Respond ONLY with valid JSON (no markdown, no extra text):
         gte(bookings.checkOutDate, dateStr),
       ));
 
-      const OTA_BARE_NORMALISED = new Set([
-        "bookingcom", "booking", "mmt", "makemytrip", "airbnb", "agoda",
-        "expedia", "goibibo", "yatra", "viacom", "ixigo", "cleartrip", "hostelworld", "ota",
-      ]);
+      // Must match isAiosellSourced() in aiosell.ts exactly — only webhook-created
+      // bookings (source prefixed "aiosell-") are excluded. Manually-entered OTA
+      // source names like "Booking.com" are NOT excluded (AioSell has no record of them).
       const isAiosellSourced = (src: string | null | undefined): boolean => {
         if (!src || typeof src !== "string") return false;
-        if (src.startsWith("aiosell-")) return true;
-        return OTA_BARE_NORMALISED.has(src.toLowerCase().replace(/[\s.\-_]+/g, ""));
+        return src.startsWith("aiosell-");
       };
+      // Checked-in guests always count — a physically occupied room is unavailable
+      // regardless of booking source (mirrors the directBookings filter in aiosell.ts).
+      const isDirectBooking = (b: { status: string | null; source: string | null }): boolean =>
+        b.status === "checked-in" || !isAiosellSourced(b.source);
 
       // Fetch bookingRoomStays for these bookings (if any)
       const tbsStaysByBookingId = new Map<number, { aiosellRoomCode: string }[]>();
@@ -24082,38 +24084,40 @@ Respond ONLY with valid JSON (no markdown, no extra text):
           for (const b of todayBookings) {
             const stayRoomIds = confirmedStayRoomIdsByBookingId.get(b.id) ?? [];
             const tbsForBooking = tbsStaysByBookingId.get(b.id) ?? [];
-            const isOta = isAiosellSourced(b.source);
+            const isDirect = isDirectBooking(b);
 
             if (stayRoomIds.length > 0) {
               const matched = stayRoomIds.filter(rid => activeRoomIds.includes(rid));
-              for (const rid of matched) bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + 1;
+              if (isDirect) {
+                for (const rid of matched) bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + 1;
+              }
               if (matched.length > 0) {
                 const entry = { bookingId: b.id, guestName: (guestNameByBookingId2.get(b.id) ?? "Guest"), source: b.source, externalId: b.externalBookingId, beds: matched.length };
-                if (isOta) { otaBookingsDetail.push(entry); otaOccupied += matched.length; }
+                if (!isDirect) { otaBookingsDetail.push(entry); otaOccupied += matched.length; }
                 else { directBookingsDetail.push(entry); directOccupied += matched.length; }
               }
             } else {
               const beds = (b.bedsBooked || b.numberOfGuests || 1) as number;
               const bookingRoomIds: number[] = [];
               if (b.roomId && activeRoomIds.includes(b.roomId)) {
-                bedsBookedByRoom[b.roomId] = (bedsBookedByRoom[b.roomId] || 0) + beds;
+                if (isDirect) bedsBookedByRoom[b.roomId] = (bedsBookedByRoom[b.roomId] || 0) + beds;
                 bookingRoomIds.push(b.roomId);
               }
               const rIds = Array.isArray(b.roomIds) ? b.roomIds : [];
               for (const rid of rIds) {
                 if (activeRoomIds.includes(rid)) {
-                  bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + beds;
+                  if (isDirect) bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + beds;
                   bookingRoomIds.push(rid);
                 }
               }
               if (bookingRoomIds.length > 0) {
                 const entry = { bookingId: b.id, guestName: (guestNameByBookingId2.get(b.id) ?? "Guest"), source: b.source, externalId: b.externalBookingId, beds };
-                if (isOta) { otaBookingsDetail.push(entry); otaOccupied += beds; }
+                if (!isDirect) { otaBookingsDetail.push(entry); otaOccupied += beds; }
                 else { directBookingsDetail.push(entry); directOccupied += beds; }
               }
             }
 
-            if (!b.roomId) {
+            if (!b.roomId && isDirect) {
               const myTbs = tbsForBooking.filter(s => s.aiosellRoomCode === mapping.aiosellRoomCode).length;
               tbsRooms += myTbs;
             }
@@ -24127,25 +24131,39 @@ Respond ONLY with valid JSON (no markdown, no extra text):
           hostezeeCalculated = stopSell ? 0 : Math.max(0, totalBeds - bedsBooked - tbsRooms);
 
         } else {
+          // Only direct bookings count towards physicallyAvailable — mirrors the push logic
+          // in aiosell.ts exactly: checked-in always counts, OTA-sourced confirmed/pending skip.
           const bookedRoomIds = new Set<number>();
+          const otaRoomIds = new Set<number>();
 
           for (const b of todayBookings) {
-            const prevSize = bookedRoomIds.size;
-            if (b.roomId && activeRoomIds.includes(b.roomId)) bookedRoomIds.add(b.roomId);
+            const isDirect = isDirectBooking(b);
             const rIds = Array.isArray(b.roomIds) ? b.roomIds : [];
-            for (const rid of rIds) if (activeRoomIds.includes(rid)) bookedRoomIds.add(rid);
             const stayRoomIds = confirmedStayRoomIdsByBookingId.get(b.id) ?? [];
-            for (const rid of stayRoomIds) if (activeRoomIds.includes(rid)) bookedRoomIds.add(rid);
             const tbsForBooking = tbsStaysByBookingId.get(b.id) ?? [];
             const myTbs = tbsForBooking.filter(s => s.aiosellRoomCode === mapping.aiosellRoomCode).length;
-            tbsRooms += myTbs;
 
-            const isOta = isAiosellSourced(b.source);
-            const addedCount = bookedRoomIds.size - prevSize;
-            if (addedCount > 0 || myTbs > 0) {
-              const entry = { bookingId: b.id, guestName: (guestNameByBookingId2.get(b.id) ?? "Guest"), source: b.source, externalId: b.externalBookingId, rooms: addedCount, tbsCount: myTbs };
-              if (isOta || myTbs > 0) { otaBookingsDetail.push(entry); otaOccupied += addedCount + myTbs; }
-              else { directBookingsDetail.push(entry); directOccupied += addedCount; }
+            const roomsAddedBefore = bookedRoomIds.size + otaRoomIds.size;
+            if (b.roomId && activeRoomIds.includes(b.roomId)) {
+              if (isDirect) bookedRoomIds.add(b.roomId); else otaRoomIds.add(b.roomId);
+            }
+            for (const rid of rIds) {
+              if (activeRoomIds.includes(rid)) {
+                if (isDirect) bookedRoomIds.add(rid); else otaRoomIds.add(rid);
+              }
+            }
+            for (const rid of stayRoomIds) {
+              if (activeRoomIds.includes(rid)) {
+                if (isDirect) bookedRoomIds.add(rid); else otaRoomIds.add(rid);
+              }
+            }
+            if (isDirect) tbsRooms += myTbs;
+
+            const totalAdded = (bookedRoomIds.size + otaRoomIds.size) - roomsAddedBefore;
+            if (totalAdded > 0 || myTbs > 0) {
+              const entry = { bookingId: b.id, guestName: (guestNameByBookingId2.get(b.id) ?? "Guest"), source: b.source, externalId: b.externalBookingId, rooms: totalAdded, tbsCount: myTbs };
+              if (!isDirect) { otaBookingsDetail.push(entry); otaOccupied += totalAdded; }
+              else { directBookingsDetail.push(entry); directOccupied += totalAdded + myTbs; }
             }
           }
 
