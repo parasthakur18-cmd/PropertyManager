@@ -1002,6 +1002,11 @@ export async function autoSyncInventoryForProperty(
       let stoppedEarly = false;
       for (let ri = 0; ri < inventoryUpdates.length; ri++) {
         const update = inventoryUpdates[ri];
+        if (update.rooms.length === 0) {
+          console.warn(`[AIOSELL] Skipping range ${update.startDate}→${update.endDate}: rooms array is empty (all mappings unmatched). Deploy latest code + run Force Sync to fix.`);
+          failCount++;
+          continue;
+        }
         for (const room of update.rooms) {
           console.log("[AIOSELL PUSH] Sending:", {
             roomId: room.roomId ?? null,

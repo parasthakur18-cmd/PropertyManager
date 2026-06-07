@@ -20666,7 +20666,15 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       const config = await getConfigForProperty(propertyId);
       if (!config) return res.status(404).json({ message: "AioSell not configured" });
 
-      const result = await pushInventory(config, updates);
+      if (!Array.isArray(updates) || updates.length === 0) {
+        return res.status(400).json({ success: false, message: "No updates provided" });
+      }
+      const validUpdates = updates.filter((u: any) => Array.isArray(u.rooms) && u.rooms.length > 0);
+      if (validUpdates.length === 0) {
+        return res.status(400).json({ success: false, message: "All updates have empty rooms arrays. Enter availability counts first." });
+      }
+
+      const result = await pushInventory(config, validUpdates);
 
       // ── Safety: re-apply all active restrictions after manual push ────────────
       // Manual pushes bypass autoSyncInventoryForProperty which normally re-applies
