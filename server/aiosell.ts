@@ -1039,9 +1039,14 @@ export async function autoSyncInventoryForProperty(
         return available === 0;
       };
 
-      const needsStopSellUpdate = inventoryUpdates.filter(range =>
-        range.rooms.some(r => shouldStopSell(r.roomCode, r.available))
-      );
+      // Push stop-sell for ALL ranges (not just those with some room needing closing).
+      // Reason: AioSell may have an external stop-sell restriction set in its own dashboard
+      // (e.g. manually blocked via AioSell UI). If Hostezee only sends stopSell=true for
+      // 0-availability dates and skips fully-open ranges, that external restriction
+      // NEVER gets cleared — rooms remain invisible on OTAs even when Hostezee shows
+      // them available. Sending stopSell=false for open rooms on every sync clears
+      // any external restriction transparently.
+      const needsStopSellUpdate = inventoryUpdates; // always push all ranges
       let ssSuccess = 0; let ssFail = 0;
       for (let ri = 0; ri < needsStopSellUpdate.length; ri++) {
         const range = needsStopSellUpdate[ri];
@@ -1077,7 +1082,7 @@ export async function autoSyncInventoryForProperty(
       const stopSellSummary = inventoryUpdates[0]?.rooms
         .map(r => `${r.roomCode}:${shouldStopSell(r.roomCode, r.available) ? "CLOSED" : "open"}`)
         .join(", ") ?? "none";
-      console.log(`[AIOSELL] Auto stop-sell: ${ssSuccess} OK / ${ssFail} failed for ${needsStopSellUpdate.length} range(s) (${inventoryUpdates.length - needsStopSellUpdate.length} all-open skipped). Today: [${stopSellSummary}]`);
+      console.log(`[AIOSELL] Auto stop-sell: ${ssSuccess} OK / ${ssFail} failed for ${needsStopSellUpdate.length} range(s). Today: [${stopSellSummary}]`);
     }
 
     // ── Step 3: Re-push stored restrictions AFTER inventory push ─────────────────

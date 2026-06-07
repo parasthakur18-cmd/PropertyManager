@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { NewBookingDialog } from "@/components/NewBookingDialog";
 import { useLocation } from "wouter";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { usePropertyFilter } from "@/hooks/usePropertyFilter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -136,7 +137,22 @@ export default function CalendarView() {
     const saved = localStorage.getItem('selectedPropertyId');
     return saved ? parseInt(saved) : "all";
   });
-  
+
+  // Global property filter — used to auto-sync the availability grid to the
+  // currently selected property so it doesn't bleed in rooms from other properties.
+  const { selectedPropertyId: globalPropertyId } = usePropertyFilter();
+
+  // When switching to Availability view: if local selector is "all" but the
+  // global filter has a specific property selected, snap to it automatically.
+  // This prevents rooms from other properties (e.g. Duplex from property 1)
+  // appearing in the availability grid when comparing against a single property
+  // in AioSell.
+  useEffect(() => {
+    if (viewMode === "availability" && selectedPropertyId === "all" && globalPropertyId != null) {
+      setSelectedPropertyId(globalPropertyId);
+    }
+  }, [viewMode, globalPropertyId]);
+
   // Sync property selection to localStorage
   useEffect(() => {
     if (selectedPropertyId !== "all") {
