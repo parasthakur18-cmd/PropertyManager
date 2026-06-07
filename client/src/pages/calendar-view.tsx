@@ -963,7 +963,7 @@ export default function CalendarView() {
       )}
 
       {/* Calendar Content — single scroll container with sticky room-name column */}
-      {viewMode === "calendar" && <div
+      {viewMode === "calendar" && <><div
         ref={calendarRef}
         className="flex-1 overflow-auto"
       >
@@ -1541,7 +1541,7 @@ export default function CalendarView() {
           <span className="w-2 h-2 rounded-full bg-amber-500" />
           <span>Cleaning</span>
         </div>
-      </div>}
+      </div></>}
 
       {/* Create Booking Dialog */}
       <NewBookingDialog

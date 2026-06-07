@@ -1,0 +1,37 @@
+  npm audit fix --force
+Run `npm audit` for details.
+Building application (frontend + backend)...
+> rest-express@1.0.0 build
+> vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist
+vite v5.4.20 building for production...
+transforming...
+Browserslist: browsers data (caniuse-lite) is 8 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+x Build failed in 2.45s
+error during build:
+✓ 90 modules transformed.
+[vite:esbuild] Transform failed with 1 error:
+/var/www/myapp/client/src/pages/calendar-view.tsx:1501:6: ERROR: Expected "}" but found "{"
+file: /var/www/myapp/client/src/pages/calendar-view.tsx:1501:6
+Expected "}" but found "{"
+1499|        </div>
+1500|  
+1501|        {/* Mobile hint — visible only on small screens */}
+   |        ^
+1502|        <div className="md:hidden border-t bg-blue-50 dark:bg-blue-950/30 px-3 py-1.5 text-[11px] text-blue-700 dark:text-blue-300 flex items-center gap-1.5 flex-shrink-0">
+1503|          <span>👉 Swipe horizontally to scroll the calendar</span>
+    at failureErrorWithLog (/var/www/myapp/node_modules/vite/node_modules/esbuild/lib/main.js:1472:15)
+    at /var/www/myapp/node_modules/vite/node_modules/esbuild/lib/main.js:755:50
+    at responseCallbacks.<computed> (/var/www/myapp/node_modules/vite/node_modules/esbuild/lib/main.js:6***:9)
+    at handleIncomingPacket (/var/www/myapp/node_modules/vite/node_modules/esbuild/lib/main.js:677:12)
+    at Socket.readFromStdout (/var/www/myapp/node_modules/vite/node_modules/esbuild/lib/main.js:600:7)
+    at Socket.emit (node:events:508:28)
+    at addChunk (node:internal/streams/readable:559:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+    at Readable.push (node:internal/streams/readable:390:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+Build failed!
+2026/06/07 05:29:59 Process exited with status 1
+Error: Process completed with exit code 1.
