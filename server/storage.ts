@@ -1213,20 +1213,13 @@ export class DatabaseStorage implements IStorage {
 
   async reorderMenuItems(updates: { id: number; displayOrder: number }[]): Promise<void> {
     if (updates.length === 0) return;
-    // Single atomic batch update: CASE id WHEN $1 THEN $2::integer WHEN $3 THEN $4::integer ... END
-    // Explicit ::integer cast prevents pg driver from inferring THEN values as text.
-    const cases = updates.map((_u, i) => `WHEN $${i * 2 + 1} THEN $${i * 2 + 2}::integer`).join(' ');
-    const inClause = updates.map((_u, i) => `$${i * 2 + 1}`).join(', ');
-    const params = updates.flatMap(u => [u.id, u.displayOrder]);
-    const client = await pool.connect();
-    try {
-      await client.query(
-        `UPDATE menu_items SET display_order = CASE id ${cases} END, updated_at = NOW() WHERE id IN (${inClause})`,
-        params
-      );
-    } finally {
-      client.release();
-    }
+    await Promise.all(
+      updates.map(u =>
+        db.update(menuItems)
+          .set({ displayOrder: u.displayOrder, updatedAt: new Date() })
+          .where(eq(menuItems.id, u.id))
+      )
+    );
   }
 
   // Menu Category operations
@@ -1328,18 +1321,13 @@ export class DatabaseStorage implements IStorage {
 
   async reorderMenuCategories(updates: { id: number; displayOrder: number }[]): Promise<void> {
     if (updates.length === 0) return;
-    const cases = updates.map((_u, i) => `WHEN $${i * 2 + 1} THEN $${i * 2 + 2}::integer`).join(' ');
-    const inClause = updates.map((_u, i) => `$${i * 2 + 1}`).join(', ');
-    const params = updates.flatMap(u => [u.id, u.displayOrder]);
-    const client = await pool.connect();
-    try {
-      await client.query(
-        `UPDATE menu_categories SET display_order = CASE id ${cases} END, updated_at = NOW() WHERE id IN (${inClause})`,
-        params
-      );
-    } finally {
-      client.release();
-    }
+    await Promise.all(
+      updates.map(u =>
+        db.update(menuCategories)
+          .set({ displayOrder: u.displayOrder, updatedAt: new Date() })
+          .where(eq(menuCategories.id, u.id))
+      )
+    );
   }
 
   // Menu Item Variant operations

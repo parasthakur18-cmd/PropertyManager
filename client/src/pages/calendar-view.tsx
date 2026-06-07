@@ -38,6 +38,7 @@ import {
   Wifi,
   WifiOff,
   Sparkles,
+  BarChart3,
 } from "lucide-react";
 import {
   Tooltip,
@@ -56,7 +57,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { format, addDays, startOfDay, eachDayOfInterval, addMonths } from "date-fns";
+import { format, addDays, startOfDay, eachDayOfInterval, addMonths, parseISO } from "date-fns";
 import {
   Select,
   SelectContent,
@@ -128,6 +129,9 @@ export default function CalendarView() {
   const sidebarWidth = isMobile ? 96 : SIDEBAR_WIDTH;
   const today = startOfDay(new Date());
   const [startDate, setStartDate] = useState<Date>(today);
+  const [viewMode, setViewMode] = useState<"calendar" | "availability">("calendar");
+  const [availStartStr, setAvailStartStr] = useState<string>(format(today, "yyyy-MM-dd"));
+  const [availDays, setAvailDays] = useState<number>(30);
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | "all">(() => {
     const saved = localStorage.getItem('selectedPropertyId');
     return saved ? parseInt(saved) : "all";
@@ -403,6 +407,59 @@ export default function CalendarView() {
     return grouped;
   }, [filteredRooms]);
 
+  // ── Availability Grid Data ─────────────────────────────────────────────────
+  const availabilityGridData = useMemo(() => {
+    const BLOCKING = ["maintenance", "out-of-order", "blocked"];
+    const availStart = parseISO(availStartStr);
+    const availEnd = addDays(availStart, availDays - 1);
+    const gridDates = eachDayOfInterval({ start: availStart, end: availEnd });
+
+    // Use rooms filtered by selected property
+    const propRooms = rooms.filter(r =>
+      selectedPropertyId === "all" || r.propertyId === selectedPropertyId
+    );
+
+    // Group rooms by type
+    const byType: Record<string, Room[]> = {};
+    propRooms.forEach(r => {
+      const t = r.roomType || "Other";
+      if (!byType[t]) byType[t] = [];
+      byType[t].push(r);
+    });
+
+    const typeRows = Object.entries(byType).map(([type, typeRooms]) => {
+      const days = gridDates.map(date => {
+        const dateStr = format(date, "yyyy-MM-dd");
+        const total = typeRooms.length;
+        const available = typeRooms.filter(room => {
+          if (BLOCKING.includes(room.status ?? "")) return false;
+          const occupied = bookings.some(b => {
+            if (["cancelled", "no_show", "checked-out"].includes(b.status)) return false;
+            const roomMatches = (b.roomIds && b.roomIds.length > 0)
+              ? b.roomIds.includes(room.id)
+              : b.roomId === room.id;
+            if (!roomMatches) return false;
+            const cin = String(b.checkInDate).slice(0, 10);
+            const cout = String(b.checkOutDate).slice(0, 10);
+            return cin <= dateStr && cout > dateStr;
+          });
+          return !occupied;
+        }).length;
+        return { available, total, occupancy: total > 0 ? Math.round(((total - available) / total) * 100) : 0 };
+      });
+      return { type, total: typeRooms.length, days };
+    });
+
+    // Total row
+    const totalDays = gridDates.map((_, i) => ({
+      available: typeRows.reduce((sum, r) => sum + r.days[i].available, 0),
+      total: typeRows.reduce((sum, r) => sum + r.days[i].total, 0),
+      occupancy: 0,
+    })).map(d => ({ ...d, occupancy: d.total > 0 ? Math.round(((d.total - d.available) / d.total) * 100) : 0 }));
+
+    return { dates: gridDates, typeRows, totalDays };
+  }, [rooms, bookings, availStartStr, availDays, selectedPropertyId]);
+
   // Bookings with no room assigned (e.g. OTA bookings where room mapping wasn't found)
   // that overlap the currently visible date range
   const unassignedBookings = useMemo(() => {
@@ -630,36 +687,66 @@ export default function CalendarView() {
         <CalendarIcon className="h-4 w-4 text-primary flex-shrink-0" />
         <span className="font-bold text-sm truncate flex-shrink-0 hidden sm:block">Room Calendar</span>
 
-        {/* Date navigation */}
-        <div className="flex items-center gap-0.5 flex-shrink-0">
-          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setStartDate(addMonths(startDate, -1))} title="Previous Month" data-testid="button-prev-month">
-            {format(addMonths(startDate, -1), "MMM")}
+        {/* View mode toggle */}
+        <div className="flex items-center bg-slate-100 dark:bg-muted rounded-md p-0.5 flex-shrink-0">
+          <Button
+            size="sm"
+            variant={viewMode === "calendar" ? "secondary" : "ghost"}
+            className="h-6 px-2 text-xs rounded-sm"
+            onClick={() => setViewMode("calendar")}
+            data-testid="button-view-calendar"
+          >
+            <CalendarIcon className="h-3 w-3 mr-1" />
+            <span className="hidden sm:inline">Calendar</span>
           </Button>
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setStartDate(addDays(startDate, -7))} data-testid="button-prev-week">
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </Button>
-          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setStartDate(today)} data-testid="button-today">
-            Today
-          </Button>
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setStartDate(addDays(startDate, 7))} data-testid="button-next-week">
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setStartDate(addMonths(startDate, 1))} title="Next Month" data-testid="button-next-month">
-            {format(addMonths(startDate, 1), "MMM")}
+          <Button
+            size="sm"
+            variant={viewMode === "availability" ? "secondary" : "ghost"}
+            className="h-6 px-2 text-xs rounded-sm"
+            onClick={() => setViewMode("availability")}
+            data-testid="button-view-availability"
+          >
+            <BarChart3 className="h-3 w-3 mr-1" />
+            <span className="hidden sm:inline">Availability</span>
           </Button>
         </div>
 
-        {/* Search */}
-        <div className="relative flex-1 min-w-0 max-w-xs">
-          <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            placeholder="Search rooms..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-7 h-7 text-xs bg-slate-50 dark:bg-background border-slate-200"
-            data-testid="input-search-calendar"
-          />
-        </div>
+        {/* Date navigation — only shown in calendar mode */}
+        {viewMode === "calendar" && (
+          <div className="flex items-center gap-0.5 flex-shrink-0">
+            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setStartDate(addMonths(startDate, -1))} title="Previous Month" data-testid="button-prev-month">
+              {format(addMonths(startDate, -1), "MMM")}
+            </Button>
+            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setStartDate(addDays(startDate, -7))} data-testid="button-prev-week">
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setStartDate(today)} data-testid="button-today">
+              Today
+            </Button>
+            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setStartDate(addDays(startDate, 7))} data-testid="button-next-week">
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setStartDate(addMonths(startDate, 1))} title="Next Month" data-testid="button-next-month">
+              {format(addMonths(startDate, 1), "MMM")}
+            </Button>
+          </div>
+        )}
+
+        {/* Search — only in calendar mode */}
+        {viewMode === "calendar" && (
+          <div className="relative flex-1 min-w-0 max-w-xs">
+            <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Search rooms..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-7 h-7 text-xs bg-slate-50 dark:bg-background border-slate-200"
+              data-testid="input-search-calendar"
+            />
+          </div>
+        )}
+
+        {viewMode === "availability" && <div className="flex-1" />}
 
         {/* Property selector */}
         <Select value={String(selectedPropertyId)} onValueChange={(v) => setSelectedPropertyId(v === "all" ? "all" : parseInt(v))}>
@@ -674,13 +761,179 @@ export default function CalendarView() {
           </SelectContent>
         </Select>
 
-        <Button size="icon" variant="ghost" className="h-7 w-7 flex-shrink-0" data-testid="button-view-settings">
-          <Settings className="h-3.5 w-3.5" />
-        </Button>
+        {viewMode === "calendar" && (
+          <Button size="icon" variant="ghost" className="h-7 w-7 flex-shrink-0" data-testid="button-view-settings">
+            <Settings className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
 
+      {/* ── Availability Grid View ───────────────────────────────────────── */}
+      {viewMode === "availability" && (
+        <div className="flex-1 overflow-auto bg-slate-50 dark:bg-background">
+          {/* Filter bar */}
+          <div className="border-b bg-white dark:bg-card px-4 py-2 flex flex-wrap items-center gap-3 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-medium text-muted-foreground whitespace-nowrap">From</label>
+              <input
+                type="date"
+                value={availStartStr}
+                onChange={e => setAvailStartStr(e.target.value)}
+                className="h-7 text-xs border rounded px-2 bg-white dark:bg-card dark:border-slate-600"
+                data-testid="input-avail-start"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-medium text-muted-foreground whitespace-nowrap">Days</label>
+              <select
+                value={availDays}
+                onChange={e => setAvailDays(Number(e.target.value))}
+                className="h-7 text-xs border rounded px-2 bg-white dark:bg-card dark:border-slate-600"
+                data-testid="select-avail-days"
+              >
+                <option value={7}>7 days</option>
+                <option value={14}>14 days</option>
+                <option value={30}>30 days</option>
+                <option value={60}>60 days</option>
+                <option value={90}>90 days</option>
+              </select>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2 text-xs"
+              onClick={() => { setAvailStartStr(format(today, "yyyy-MM-dd")); setAvailDays(30); }}
+              data-testid="button-avail-reset"
+            >
+              Today · 30d
+            </Button>
+            <div className="flex items-center gap-3 ml-auto text-xs text-muted-foreground">
+              <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-green-100 border border-green-300" /> Available</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-amber-100 border border-amber-300" /> Partial</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-red-100 border border-red-300" /> Full</span>
+            </div>
+          </div>
+
+          {/* Grid table */}
+          <div className="overflow-x-auto">
+            <table className="text-xs border-separate border-spacing-0 w-full min-w-max">
+              <thead>
+                <tr>
+                  <th className="sticky left-0 z-20 bg-white dark:bg-card border-b border-r px-3 py-2 text-left font-semibold text-sm text-foreground min-w-[160px]">
+                    Room Type
+                  </th>
+                  <th className="sticky left-[160px] z-20 bg-white dark:bg-card border-b border-r px-2 py-2 text-center font-semibold text-muted-foreground whitespace-nowrap">
+                    Total
+                  </th>
+                  {availabilityGridData.dates.map((date, i) => {
+                    const isToday = format(date, "yyyy-MM-dd") === format(today, "yyyy-MM-dd");
+                    const showMonth = i === 0 || format(date, "d") === "1";
+                    return (
+                      <th
+                        key={format(date, "yyyy-MM-dd")}
+                        className={cn(
+                          "border-b border-r px-1 py-1 text-center font-medium whitespace-nowrap",
+                          isToday ? "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300" : "text-foreground",
+                          showMonth && i !== 0 ? "border-l-2 border-l-slate-300 dark:border-l-slate-600" : ""
+                        )}
+                        style={{ minWidth: "52px" }}
+                      >
+                        <div className="font-semibold leading-tight">{format(date, "d")}</div>
+                        <div className={cn("text-[10px]", isToday ? "text-amber-600" : "text-muted-foreground")}>{format(date, "EEE")}</div>
+                        {showMonth && <div className="text-[10px] text-primary font-bold">{format(date, "MMM")}</div>}
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {/* Total available row */}
+                <tr className="bg-slate-50 dark:bg-muted/20">
+                  <td className="sticky left-0 z-10 bg-slate-50 dark:bg-muted/20 border-b border-r px-3 py-2 font-bold text-foreground">
+                    All Rooms
+                  </td>
+                  <td className="sticky left-[160px] z-10 bg-slate-50 dark:bg-muted/20 border-b border-r px-2 py-2 text-center font-bold text-foreground">
+                    {availabilityGridData.typeRows.reduce((s, r) => s + r.total, 0)}
+                  </td>
+                  {availabilityGridData.totalDays.map((day, i) => {
+                    const date = availabilityGridData.dates[i];
+                    const occ = day.occupancy;
+                    const isToday = format(date, "yyyy-MM-dd") === format(today, "yyyy-MM-dd");
+                    return (
+                      <td key={i} className={cn(
+                        "border-b border-r px-1 py-2 text-center font-bold",
+                        isToday && "ring-1 ring-inset ring-amber-300 dark:ring-amber-700"
+                      )}>
+                        <div className={cn(
+                          "text-sm font-bold",
+                          occ >= 80 ? "text-red-600 dark:text-red-400" :
+                          occ >= 50 ? "text-amber-600 dark:text-amber-400" :
+                          "text-green-700 dark:text-green-400"
+                        )}>
+                          {day.available}
+                        </div>
+                        <div className="text-[9px] text-muted-foreground">{occ}% full</div>
+                      </td>
+                    );
+                  })}
+                </tr>
+
+                {/* Per-room-type rows */}
+                {availabilityGridData.typeRows.map(({ type, total, days }) => (
+                  <tr key={type} className="hover:bg-slate-50/80 dark:hover:bg-muted/10 transition-colors">
+                    <td className="sticky left-0 z-10 bg-white dark:bg-card border-b border-r px-3 py-2 font-medium text-foreground max-w-[160px]">
+                      <div className="truncate" title={type}>{type}</div>
+                    </td>
+                    <td className="sticky left-[160px] z-10 bg-white dark:bg-card border-b border-r px-2 py-2 text-center text-muted-foreground font-medium">
+                      {total}
+                    </td>
+                    {days.map((day, i) => {
+                      const date = availabilityGridData.dates[i];
+                      const isToday = format(date, "yyyy-MM-dd") === format(today, "yyyy-MM-dd");
+                      const occ = day.occupancy;
+                      const cellBg =
+                        occ >= 80 ? "bg-red-50 dark:bg-red-950/20" :
+                        occ >= 40 ? "bg-amber-50 dark:bg-amber-950/20" :
+                        "bg-green-50 dark:bg-green-950/20";
+                      return (
+                        <td
+                          key={i}
+                          className={cn(
+                            "border-b border-r px-1 py-1.5 text-center",
+                            cellBg,
+                            isToday && "ring-1 ring-inset ring-amber-300 dark:ring-amber-600"
+                          )}
+                        >
+                          <div className={cn(
+                            "font-bold text-sm",
+                            day.available === 0 ? "text-red-600 dark:text-red-400" :
+                            day.available < total * 0.4 ? "text-amber-600 dark:text-amber-400" :
+                            "text-green-700 dark:text-green-400"
+                          )}>
+                            {day.available}
+                          </div>
+                          <div className="text-[9px] text-muted-foreground">/{total}</div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+
+                {availabilityGridData.typeRows.length === 0 && (
+                  <tr>
+                    <td colSpan={availabilityGridData.dates.length + 2} className="text-center py-12 text-muted-foreground">
+                      No rooms found for the selected property.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Unassigned OTA Bookings — compact single-line strip */}
-      {unassignedBookings.length > 0 && (
+      {viewMode === "calendar" && unassignedBookings.length > 0 && (
         <div className="border-b bg-amber-50 dark:bg-amber-950/30 px-3 py-1 flex-shrink-0 flex items-center gap-2 min-w-0 overflow-x-auto">
           <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
           <span className="text-xs font-semibold text-amber-800 dark:text-amber-300 flex-shrink-0">
@@ -710,7 +963,7 @@ export default function CalendarView() {
       )}
 
       {/* Calendar Content — single scroll container with sticky room-name column */}
-      <div
+      {viewMode === "calendar" && <div
         ref={calendarRef}
         className="flex-1 overflow-auto"
       >
@@ -1288,7 +1541,7 @@ export default function CalendarView() {
           <span className="w-2 h-2 rounded-full bg-amber-500" />
           <span>Cleaning</span>
         </div>
-      </div>
+      </div>}
 
       {/* Create Booking Dialog */}
       <NewBookingDialog
