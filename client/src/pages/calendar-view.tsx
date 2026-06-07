@@ -66,6 +66,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -133,6 +139,7 @@ export default function CalendarView() {
   const [viewMode, setViewMode] = useState<"calendar" | "availability">("calendar");
   const [availStartStr, setAvailStartStr] = useState<string>(format(today, "yyyy-MM-dd"));
   const [availDays, setAvailDays] = useState<number>(30);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | "all">(() => {
     const saved = localStorage.getItem('selectedPropertyId');
     return saved ? parseInt(saved) : "all";
@@ -688,99 +695,146 @@ export default function CalendarView() {
 
   return (
     <div className="h-full flex flex-col bg-slate-50 dark:bg-background overflow-hidden">
-      {/* Header — single compact row */}
-      <div className="border-b bg-white dark:bg-card px-2 py-1.5 flex-shrink-0 flex items-center gap-2 min-w-0">
-        {/* Sidebar toggle + title */}
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={() => setShowRoomSidebar(!showRoomSidebar)}
-          data-testid="button-toggle-room-sidebar"
-          className="h-7 w-7 flex-shrink-0 hidden md:flex"
-        >
-          {showRoomSidebar ? <X className="h-3.5 w-3.5" /> : <Menu className="h-3.5 w-3.5" />}
-        </Button>
-        <CalendarIcon className="h-4 w-4 text-primary flex-shrink-0" />
-        <span className="font-bold text-sm truncate flex-shrink-0 hidden sm:block">Room Calendar</span>
+      {/* Header — responsive two-row design */}
+      <div className="border-b bg-white dark:bg-card flex-shrink-0">
+        {/* Row 1: title + view toggle + property selector */}
+        <div className="px-2 py-1.5 flex items-center gap-2 min-w-0">
+          {/* Sidebar toggle */}
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setShowRoomSidebar(!showRoomSidebar)}
+            data-testid="button-toggle-room-sidebar"
+            className="h-7 w-7 flex-shrink-0 hidden md:flex"
+          >
+            {showRoomSidebar ? <X className="h-3.5 w-3.5" /> : <Menu className="h-3.5 w-3.5" />}
+          </Button>
 
-        {/* View mode toggle */}
-        <div className="flex items-center bg-slate-100 dark:bg-muted rounded-md p-0.5 flex-shrink-0">
-          <Button
-            size="sm"
-            variant={viewMode === "calendar" ? "secondary" : "ghost"}
-            className="h-6 px-2 text-xs rounded-sm"
-            onClick={() => setViewMode("calendar")}
-            data-testid="button-view-calendar"
-          >
-            <CalendarIcon className="h-3 w-3 mr-1" />
-            <span className="hidden sm:inline">Calendar</span>
-          </Button>
-          <Button
-            size="sm"
-            variant={viewMode === "availability" ? "secondary" : "ghost"}
-            className="h-6 px-2 text-xs rounded-sm"
-            onClick={() => setViewMode("availability")}
-            data-testid="button-view-availability"
-          >
-            <BarChart3 className="h-3 w-3 mr-1" />
-            <span className="hidden sm:inline">Availability</span>
-          </Button>
+          <CalendarIcon className="h-4 w-4 text-primary flex-shrink-0" />
+          <span className="font-bold text-sm flex-shrink-0 hidden sm:block">Room Calendar</span>
+
+          {/* View mode toggle */}
+          <div className="flex items-center bg-slate-100 dark:bg-muted rounded-md p-0.5 flex-shrink-0">
+            <Button
+              size="sm"
+              variant={viewMode === "calendar" ? "secondary" : "ghost"}
+              className="h-6 px-2 text-xs rounded-sm"
+              onClick={() => setViewMode("calendar")}
+              data-testid="button-view-calendar"
+            >
+              <CalendarIcon className="h-3 w-3 mr-1" />
+              <span className="hidden sm:inline">Calendar</span>
+            </Button>
+            <Button
+              size="sm"
+              variant={viewMode === "availability" ? "secondary" : "ghost"}
+              className="h-6 px-2 text-xs rounded-sm"
+              onClick={() => setViewMode("availability")}
+              data-testid="button-view-availability"
+            >
+              <BarChart3 className="h-3 w-3 mr-1" />
+              <span className="hidden sm:inline">Availability</span>
+            </Button>
+          </div>
+
+          <div className="flex-1" />
+
+          {/* Property selector — always visible, right-aligned */}
+          <Select value={String(selectedPropertyId)} onValueChange={(v) => setSelectedPropertyId(v === "all" ? "all" : parseInt(v))}>
+            <SelectTrigger className="h-7 w-auto min-w-[120px] max-w-[180px] text-xs flex-shrink-0 bg-slate-50 dark:bg-muted border-slate-200 dark:border-slate-700" data-testid="select-property-calendar">
+              <SelectValue placeholder="All Properties" />
+            </SelectTrigger>
+            <SelectContent align="end" side="bottom" className="z-50">
+              <SelectItem value="all">All Properties</SelectItem>
+              {properties.map(p => (
+                <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {viewMode === "calendar" && (
+            <Button size="icon" variant="ghost" className="h-7 w-7 flex-shrink-0" data-testid="button-view-settings">
+              <Settings className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
 
-        {/* Date navigation — only shown in calendar mode */}
+        {/* Row 2 (calendar mode only): date nav + date picker + search */}
         {viewMode === "calendar" && (
-          <div className="flex items-center gap-0.5 flex-shrink-0">
-            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setStartDate(addMonths(startDate, -1))} title="Previous Month" data-testid="button-prev-month">
-              {format(addMonths(startDate, -1), "MMM")}
-            </Button>
-            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setStartDate(addDays(startDate, -7))} data-testid="button-prev-week">
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </Button>
-            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setStartDate(today)} data-testid="button-today">
-              Today
-            </Button>
-            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setStartDate(addDays(startDate, 7))} data-testid="button-next-week">
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setStartDate(addMonths(startDate, 1))} title="Next Month" data-testid="button-next-month">
-              {format(addMonths(startDate, 1), "MMM")}
-            </Button>
+          <div className="px-2 pb-1.5 flex items-center gap-2 min-w-0 border-t border-slate-100 dark:border-slate-800 pt-1.5">
+            {/* Compact date navigation */}
+            <div className="flex items-center gap-0.5 flex-shrink-0">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                onClick={() => setStartDate(addMonths(startDate, -1))}
+                title="Previous Month"
+                data-testid="button-prev-month"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+
+              {/* Date picker popup — click to jump to any date */}
+              <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2.5 text-xs font-semibold gap-1.5 border-slate-200 dark:border-slate-700 bg-white dark:bg-card hover:bg-slate-50 min-w-[100px]"
+                    data-testid="button-date-picker"
+                  >
+                    <CalendarIcon className="h-3 w-3 text-primary" />
+                    {format(startDate, "MMM d, yyyy")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 z-50" align="start" side="bottom">
+                  <CalendarPicker
+                    mode="single"
+                    selected={startDate}
+                    onSelect={(d) => {
+                      if (d) { setStartDate(startOfDay(d)); setDatePickerOpen(false); }
+                    }}
+                    defaultMonth={startDate}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                onClick={() => setStartDate(addMonths(startDate, 1))}
+                title="Next Month"
+                data-testid="button-next-month"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+
+              <Button
+                size="sm"
+                variant={startDate.toDateString() === today.toDateString() ? "secondary" : "outline"}
+                className="h-7 px-2.5 text-xs ml-1"
+                onClick={() => setStartDate(today)}
+                data-testid="button-today"
+              >
+                Today
+              </Button>
+            </div>
+
+            {/* Search */}
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search rooms..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-7 h-7 text-xs bg-slate-50 dark:bg-background border-slate-200"
+                data-testid="input-search-calendar"
+              />
+            </div>
           </div>
-        )}
-
-        {/* Search — only in calendar mode */}
-        {viewMode === "calendar" && (
-          <div className="relative flex-1 min-w-0 max-w-xs">
-            <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search rooms..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-7 h-7 text-xs bg-slate-50 dark:bg-background border-slate-200"
-              data-testid="input-search-calendar"
-            />
-          </div>
-        )}
-
-        {viewMode === "availability" && <div className="flex-1" />}
-
-        {/* Property selector */}
-        <Select value={String(selectedPropertyId)} onValueChange={(v) => setSelectedPropertyId(v === "all" ? "all" : parseInt(v))}>
-          <SelectTrigger className="h-7 w-auto max-w-[160px] text-xs flex-shrink-0 bg-white dark:bg-card">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Properties</SelectItem>
-            {properties.map(p => (
-              <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {viewMode === "calendar" && (
-          <Button size="icon" variant="ghost" className="h-7 w-7 flex-shrink-0" data-testid="button-view-settings">
-            <Settings className="h-3.5 w-3.5" />
-          </Button>
         )}
       </div>
 

@@ -132,7 +132,7 @@ export function NewBookingDialog({ open, onOpenChange, defaultCheckIn, defaultCh
 
   const { data: roomAvailability } = useQuery({
     queryKey: ["/api/rooms/availability", checkInDate, checkOutDate],
-    enabled: !!(checkInDate && checkOutDate),
+    enabled: !!(checkInDate && checkOutDate) && open,
     queryFn: async () => {
       const response = await fetch(`/api/rooms/availability?checkIn=${checkInDate?.toISOString()}&checkOut=${checkOutDate?.toISOString()}`);
       if (!response.ok) throw new Error("Failed to fetch availability");
