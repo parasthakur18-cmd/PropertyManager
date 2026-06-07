@@ -451,8 +451,40 @@ export default function CalendarView() {
     });
 
     const typeRows = Object.entries(byType).map(([type, typeRooms]) => {
+      // Dorm rooms: track available BEDS (matches AioSell's inventory unit)
+      // Regular rooms: track available ROOMS as before
+      const isDorm = typeRooms.some(r => r.roomCategory === "dormitory");
+
       const days = gridDates.map(date => {
         const dateStr = format(date, "yyyy-MM-dd");
+
+        if (isDorm) {
+          // Total capacity = sum of all beds across all dorm rooms in this type
+          const totalBeds = typeRooms.reduce((sum, r) => sum + (r.totalBeds || r.capacity || 1), 0);
+
+          // Occupied beds = sum of bedsBooked for each active booking per dorm room
+          const occupiedBeds = typeRooms.reduce((sum, room) => {
+            if (BLOCKING.includes(room.status ?? "")) return sum + (room.totalBeds || room.capacity || 1);
+            const bookedInRoom = bookings
+              .filter(b => {
+                if (["cancelled", "no_show", "checked-out"].includes(b.status)) return false;
+                const roomMatches = (b.roomIds && b.roomIds.length > 0)
+                  ? b.roomIds.includes(room.id)
+                  : b.roomId === room.id;
+                if (!roomMatches) return false;
+                const cin = String(b.checkInDate).slice(0, 10);
+                const cout = String(b.checkOutDate).slice(0, 10);
+                return cin <= dateStr && cout > dateStr;
+              })
+              .reduce((t, b) => t + ((b as any).bedsBooked || b.numberOfGuests || 1), 0);
+            return sum + Math.min(bookedInRoom, room.totalBeds || room.capacity || 1);
+          }, 0);
+
+          const available = Math.max(0, totalBeds - occupiedBeds);
+          return { available, total: totalBeds, occupancy: totalBeds > 0 ? Math.round((occupiedBeds / totalBeds) * 100) : 0, isDorm: true };
+        }
+
+        // Regular (non-dorm) rooms — count by room
         const total = typeRooms.length;
         const available = typeRooms.filter(room => {
           if (BLOCKING.includes(room.status ?? "")) return false;
@@ -468,9 +500,15 @@ export default function CalendarView() {
           });
           return !occupied;
         }).length;
-        return { available, total, occupancy: total > 0 ? Math.round(((total - available) / total) * 100) : 0 };
+        return { available, total, occupancy: total > 0 ? Math.round(((total - available) / total) * 100) : 0, isDorm: false };
       });
-      return { type, total: typeRooms.length, days };
+
+      // Total capacity for the type (beds for dorms, room count for regular)
+      const typeTotal = isDorm
+        ? typeRooms.reduce((sum, r) => sum + (r.totalBeds || r.capacity || 1), 0)
+        : typeRooms.length;
+
+      return { type, total: typeTotal, isDorm, days };
     });
 
     // Total row
@@ -949,13 +987,17 @@ export default function CalendarView() {
                 </tr>
 
                 {/* Per-room-type rows */}
-                {availabilityGridData.typeRows.map(({ type, total, days }) => (
+                {availabilityGridData.typeRows.map(({ type, total, isDorm, days }) => (
                   <tr key={type} className="hover:bg-slate-50/80 dark:hover:bg-muted/10 transition-colors">
                     <td className="sticky left-0 z-10 bg-white dark:bg-card border-b border-r px-3 py-2 font-medium text-foreground max-w-[160px]">
                       <div className="truncate" title={type}>{type}</div>
+                      {isDorm && (
+                        <div className="text-[9px] text-blue-500 font-normal mt-0.5">beds</div>
+                      )}
                     </td>
                     <td className="sticky left-[160px] z-10 bg-white dark:bg-card border-b border-r px-2 py-2 text-center text-muted-foreground font-medium">
                       {total}
+                      {isDorm && <div className="text-[9px] font-normal">beds</div>}
                     </td>
                     {days.map((day, i) => {
                       const date = availabilityGridData.dates[i];
