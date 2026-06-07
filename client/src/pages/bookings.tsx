@@ -1053,8 +1053,25 @@ export default function Bookings() {
       // Room type: single room or multi-room group booking
       let roomLabel = "N/A";
       if (booking.roomIds && booking.roomIds.length > 1) {
-        const types = [...new Set(booking.roomIds.map(id => roomMap.get(id)?.roomType).filter(Boolean))];
-        roomLabel = types.join(", ") || "Multiple Rooms";
+        const roomDetails = booking.roomIds
+          .map(id => roomMap.get(id))
+          .filter(Boolean) as Room[];
+        if (roomDetails.length > 0) {
+          // Group by room type, collect room numbers
+          const byType = new Map<string, string[]>();
+          roomDetails.forEach(r => {
+            const t = r.roomType || "Room";
+            if (!byType.has(t)) byType.set(t, []);
+            if (r.roomNumber) byType.get(t)!.push(r.roomNumber);
+          });
+          roomLabel = Array.from(byType.entries())
+            .map(([type, nums]) => nums.length > 0
+              ? `${type} × ${nums.length} (Rooms ${nums.join(", ")})`
+              : `${type} × ${byType.get(type)!.length}`)
+            .join("; ");
+        } else {
+          roomLabel = `${booking.roomIds.length} Rooms`;
+        }
       } else if (room) {
         roomLabel = `${room.roomType}${room.roomNumber ? ` (Room ${room.roomNumber})` : ""}`;
       }
@@ -1139,7 +1156,6 @@ export default function Bookings() {
         <div class="header">
           <div class="brand">
             <h1>${propertyName}</h1>
-            <p>Simplify Stays</p>
             ${propertyLocation ? `<div style="font-size:11px;color:#555;margin-top:6px;">${propertyLocation}</div>` : ""}
             ${propertyPhone ? `<div style="font-size:11px;color:#555;">📞 ${propertyPhone}</div>` : ""}
             ${propertyEmail ? `<div style="font-size:11px;color:#555;">✉ ${propertyEmail}</div>` : ""}
@@ -1224,7 +1240,7 @@ export default function Bookings() {
           <div class="terms">
             <ul>
               <li>Check-in time is from <strong>12:00 PM</strong>. Early check-in is subject to availability.</li>
-              <li>Check-out time is <strong>11:00 AM</strong>. Late check-out may attract additional charges.</li>
+              <li>Check-out time is <strong>10:00 AM</strong>. Late check-out may attract additional charges.</li>
               <li>Valid government-issued photo ID is mandatory at check-in for all guests.</li>
               <li>Any damages to property will be charged to the guest's account.</li>
               <li>Cancellations must be communicated in advance as per the property's cancellation policy.</li>
