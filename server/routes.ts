@@ -21769,10 +21769,32 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       // Normalise helper — must match the same normalisation used in aiosell.ts pushInventory
       const normRT = (s: string) => (s || "").toLowerCase().replace(/[-_\s]+/g, "").trim();
 
+      // Pre-compute distinct room types for fallback matching
+      const distinctRoomTypes = [...new Set(allRooms.map(r => r.roomType).filter(Boolean))] as string[];
+
       // Build per-mapping availability — mirrors autoSyncInventoryForProperty logic
       const roomTypeData = mappings.map(mapping => {
         const normMappingType = normRT(mapping.hostezeeRoomType);
-        const matchingRooms = allRooms.filter(r => normRT(r.roomType || "") === normMappingType);
+        let matchingRooms = allRooms.filter(r => normRT(r.roomType || "") === normMappingType);
+
+        // ── Fallback: substring match ────────────────────────────────────────────
+        // Handles cases where hostezeeRoomType was stored as AioSell code format
+        // (e.g. "bed-in-4-bed-female-dormitory-room" instead of "4-Bed Female Dormitory").
+        // normRT("4-Bed Female Dormitory")="4bedfemaledormitory" IS contained in
+        // normRT("bed-in-4-bed-female-dormitory-room")="bedin4bedfemaledormitoryroom" → match.
+        if (matchingRooms.length === 0) {
+          const normCode = normRT(mapping.aiosellRoomCode);
+          const candidates = distinctRoomTypes.filter(rt => {
+            const n = normRT(rt);
+            return n.length >= 4 && (normCode.includes(n) || normMappingType.includes(n));
+          });
+          const uniqueCandidates = [...new Set(candidates)];
+          if (uniqueCandidates.length === 1) {
+            matchingRooms = allRooms.filter(r => r.roomType === uniqueCandidates[0]);
+            console.warn(`[INV-CAL] hostezeeRoomType mismatch: "${mapping.hostezeeRoomType}" → "${uniqueCandidates[0]}" via substring (code: ${mapping.aiosellRoomCode})`);
+          }
+        }
+
         const blockedRoomIds = new Set(matchingRooms.filter(r => ["maintenance", "out-of-order", "blocked"].includes(r.status || "")).map(r => r.id));
         const activeRoomIds = matchingRooms.map(r => r.id).filter(id => !blockedRoomIds.has(id));
         const isDormitory = matchingRooms.some(r => activeRoomIds.includes(r.id) && r.roomCategory === "dormitory");
@@ -21852,10 +21874,15 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           }
         });
 
+        // For dorms: total = sum of beds; for regular rooms: total = room count
+        const totalCapacity = isDormitory
+          ? matchingRooms.filter(r => activeRoomIds.includes(r.id)).reduce((s, r) => s + (r.totalBeds || r.capacity || 1), 0)
+          : matchingRooms.length;
+
         return {
           roomCode: mapping.aiosellRoomCode,
           hostezeeRoomType: mapping.hostezeeRoomType,
-          totalRooms: matchingRooms.length,
+          totalRooms: totalCapacity,
           rate: latestRateByCode[mapping.aiosellRoomCode] || null,
           days,
           isDormitory,

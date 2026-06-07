@@ -627,13 +627,37 @@ export async function autoSyncInventoryForProperty(
       s.toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
 
     // Group rooms by type (using hostezeeRoomType from mappings) — exact normalised match
+    // Strip all separators (hyphens, underscores, spaces) — used for substring fallback matching
+    const flatNorm = (s: string) => (s || "").toLowerCase().replace(/[-_\s]+/g, "");
+
     const roomsByType: Record<string, number[]> = {};
     for (const mapping of mappings) {
       const normMapped = normaliseRoomType(mapping.hostezeeRoomType);
-      const matchingRooms = allRooms.filter(r => {
+      let matchingRooms = allRooms.filter(r => {
         const normRoom = normaliseRoomType(r.roomType || "");
         return normRoom === normMapped;
       });
+
+      // ── Fallback: substring match ────────────────────────────────────────────
+      // Handles cases where hostezeeRoomType was accidentally stored as the AioSell
+      // code format (e.g. "bed-in-4-bed-female-dormitory-room" instead of "4-Bed
+      // Female Dormitory"). The actual room type's flat-normalized form IS a substring
+      // of the AioSell code's flat-normalized form → use that as the match.
+      if (matchingRooms.length === 0) {
+        const normCode = flatNorm(mapping.aiosellRoomCode);
+        const normMappedFlat = flatNorm(mapping.hostezeeRoomType);
+        const distinctRoomTypes = [...new Set(allRooms.map(r => r.roomType).filter(Boolean))];
+        const candidates = distinctRoomTypes.filter(rt => {
+          const n = flatNorm(rt!);
+          return n.length >= 4 && (normCode.includes(n) || normMappedFlat.includes(n));
+        });
+        const distinctCandidates = [...new Set(candidates)];
+        if (distinctCandidates.length === 1) {
+          matchingRooms = allRooms.filter(r => r.roomType === distinctCandidates[0]);
+          console.warn(`[AIOSELL] hostezeeRoomType mismatch fallback: "${mapping.hostezeeRoomType}" → "${distinctCandidates[0]}" via substring (code: ${mapping.aiosellRoomCode}). Fix the room mapping via Channel Manager → Room Mapping tab.`);
+        }
+      }
+
       if (matchingRooms.length > 0) {
         roomsByType[mapping.hostezeeRoomType] = matchingRooms.map(r => r.id);
         if (matchingRooms.some(r => normaliseRoomType(r.roomType || "") !== normaliseRoomType(mapping.hostezeeRoomType))) {

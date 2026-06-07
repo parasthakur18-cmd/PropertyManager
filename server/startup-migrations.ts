@@ -1427,6 +1427,91 @@ export async function runStartupMigrations(): Promise<void> {
   } catch (err: any) {
     console.warn(`[MIGRATE] room_ota_control_indexes: ${err.message}`);
   }
+
+  try {
+    await healAiosellRoomTypeMappings();
+  } catch (err: any) {
+    console.warn(`[AIOSELL-HEAL] room type mismatch repair: ${err.message}`);
+  }
+}
+
+/**
+ * Detects and repairs aiosell_room_mappings rows where hostezeeRoomType doesn't match
+ * any room in the rooms table. This happens when the AioSell room code was accidentally
+ * entered as the hostezeeRoomType (e.g. "bed-in-4-bed-female-dormitory-room" instead of
+ * "4-Bed Female Dormitory"). The mismatch causes matchingRooms to be empty, so the sync
+ * pushes availability=0 to AioSell for those room types forever.
+ *
+ * Fix strategy:
+ *   1. Normalize: strip hyphens/underscores/spaces from both sides.
+ *   2. Primary check: if already matches, skip.
+ *   3. Fallback: check whether normRT(roomType) is a substring of normRT(aiosellRoomCode).
+ *      e.g. normRT("4-Bed Female Dormitory")="4bedfemaledormitory" is IN
+ *           normRT("bed-in-4-bed-female-dormitory-room")="bedin4bedfemaledormitoryroom" → match!
+ *   4. If exactly one candidate found, update hostezeeRoomType to the real room type name.
+ *   5. Also strips stray apostrophes/backticks from hostezeeRoomType values.
+ */
+async function healAiosellRoomTypeMappings(): Promise<void> {
+  const client = await pool.connect();
+  try {
+    const normRT = (s: string) => (s || "").toLowerCase().replace(/[-_\s]+/g, "");
+
+    const mappingsResult = await client.query(`
+      SELECT arm.id, arm.aiosell_room_code, arm.hostezee_room_type, ac.property_id
+      FROM aiosell_room_mappings arm
+      JOIN aiosell_configurations ac ON ac.id = arm.config_id
+    `);
+
+    for (const row of mappingsResult.rows) {
+      // Clean obvious data corruption: trailing apostrophes, backticks, extra whitespace
+      const cleanedType = (row.hostezee_room_type || "").replace(/[`'"]+$/g, "").trim();
+
+      const roomsResult = await client.query(
+        `SELECT DISTINCT room_type FROM rooms WHERE property_id = $1 AND room_type IS NOT NULL`,
+        [row.property_id]
+      );
+      const roomTypes = roomsResult.rows.map((r: any) => r.room_type as string).filter(Boolean);
+
+      const normMappingType = normRT(cleanedType);
+      const alreadyMatches = roomTypes.some(rt => normRT(rt) === normMappingType);
+
+      if (alreadyMatches && cleanedType === row.hostezee_room_type) continue; // nothing to fix
+
+      let targetType: string | null = null;
+
+      if (!alreadyMatches) {
+        // Fallback: find room type whose normalized form is a substring of the AioSell code
+        // (handles "bed-in-4-bed-female-dormitory-room" → "4-Bed Female Dormitory")
+        const normCode = normRT(row.aiosell_room_code);
+        const candidates = roomTypes.filter(rt => {
+          const n = normRT(rt);
+          return n.length >= 4 && (normCode.includes(n) || normMappingType.includes(n));
+        });
+        const distinctNorms = [...new Set(candidates.map(normRT))];
+        if (distinctNorms.length === 1) {
+          targetType = candidates.find(rt => normRT(rt) === distinctNorms[0]) || null;
+        } else if (distinctNorms.length > 1) {
+          console.warn(`[AIOSELL-HEAL] Ambiguous match for mapping id=${row.id} code=${row.aiosell_room_code}: candidates=[${candidates.join(", ")}] — skipping`);
+        } else {
+          // No substring match — just apply the cleanup if needed
+          if (cleanedType !== row.hostezee_room_type) targetType = cleanedType;
+        }
+      } else {
+        // Already matches but needs cleanup (trailing apostrophe etc.)
+        targetType = cleanedType;
+      }
+
+      if (targetType && targetType !== row.hostezee_room_type) {
+        await client.query(
+          `UPDATE aiosell_room_mappings SET hostezee_room_type = $1 WHERE id = $2`,
+          [targetType, row.id]
+        );
+        console.log(`[AIOSELL-HEAL] Fixed mapping id=${row.id} (${row.aiosell_room_code}): "${row.hostezee_room_type}" → "${targetType}"`);
+      }
+    }
+  } finally {
+    client.release();
+  }
 }
 
 // Add new staff-alert templates here. They will be auto-inserted on next
