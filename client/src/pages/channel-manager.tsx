@@ -670,9 +670,33 @@ function SyncExistingBookingsSection({ config }: { config: AiosellConfig | null 
   const [fromDate, setFromDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [toDate, setToDate] = useState(() => { const d = new Date(); d.setFullYear(d.getFullYear() + 1); return d.toISOString().split("T")[0]; });
   const [copied, setCopied] = useState(false);
+  const [pullResult, setPullResult] = useState<{ imported: number; skipped: number; total: number; errors?: string[] } | null>(null);
 
   const webhookUrl = `${typeof window !== "undefined" ? window.location.origin : "https://hostezee.in"}/api/aiosell/reservation`;
   const hotelCode = config?.hotelCode || "(your hotel code)";
+
+  const pullMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/aiosell/pull-reservations", {
+        propertyId: config?.propertyId,
+        fromDate,
+        toDate,
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setPullResult({ imported: data.imported, skipped: data.skipped, total: data.total, errors: data.errors });
+      if (data.imported > 0) {
+        toast({ title: `Imported ${data.imported} booking${data.imported !== 1 ? "s" : ""}`, description: `${data.skipped} already existed. Run inventory sync after import.` });
+        queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      } else {
+        toast({ title: "No new bookings", description: data.message || "All reservations already exist in Hostezee." });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Pull failed", description: err.message || "Could not pull reservations from AioSell.", variant: "destructive" });
+    },
+  });
 
   const emailSubject = `Request: Resend all reservations to PMS webhook`;
   const emailBody = `Hi AioSell Support,
@@ -706,12 +730,9 @@ Thank you.`;
   return (
     <div className="space-y-3">
       <div>
-        <h4 className="text-sm font-semibold mb-1">Sync Existing Bookings from Booking.com</h4>
+        <h4 className="text-sm font-semibold mb-1">Import Missing OTA Bookings from AioSell</h4>
         <p className="text-xs text-muted-foreground">
-          AioSell uses a <strong>push-only</strong> model — bookings flow from Booking.com → AioSell → your webhook automatically. There is no API to pull them manually.
-        </p>
-        <p className="text-xs text-muted-foreground mt-1">
-          To get bookings already in your Booking.com dashboard, you need to ask AioSell to <strong>resend them</strong> to your webhook. Use the ready-made email below.
+          If AioSell shows <strong>lower availability</strong> than Hostezee, it means AioSell has OTA bookings (Booking.com, Hostelworld, etc.) that Hostezee hasn't received yet. Pull them directly to bring Hostezee in sync.
         </p>
       </div>
 
@@ -726,22 +747,63 @@ Thank you.`;
         </div>
       </div>
 
-      <div className="rounded-md border bg-muted/40 p-3 space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-muted-foreground">Email to: support@aiosell.com</span>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={copyEmail} data-testid="button-copy-email">
-              {copied ? <CheckCircle className="h-3 w-3 mr-1 text-green-600" /> : <Download className="h-3 w-3 mr-1" />}
-              {copied ? "Copied!" : "Copy"}
-            </Button>
-            <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={openEmail} data-testid="button-open-email">
-              <Link2 className="h-3 w-3 mr-1" />
-              Open Mail
-            </Button>
+      <Button
+        className="w-full h-8 text-xs"
+        onClick={() => { setPullResult(null); pullMutation.mutate(); }}
+        disabled={pullMutation.isPending || !config?.propertyId}
+        data-testid="button-pull-reservations"
+      >
+        {pullMutation.isPending
+          ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Pulling from AioSell…</>
+          : <><Download className="h-3.5 w-3.5 mr-1.5" />Pull Reservations from AioSell</>
+        }
+      </Button>
+
+      {pullResult && (
+        <div className={`rounded-md border p-2.5 text-xs space-y-1 ${pullResult.imported > 0 ? "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800" : "bg-muted/40"}`}>
+          <div className="flex items-center gap-2 font-medium">
+            {pullResult.imported > 0
+              ? <CheckCircle className="h-3.5 w-3.5 text-green-600" />
+              : <Activity className="h-3.5 w-3.5 text-muted-foreground" />
+            }
+            {pullResult.imported > 0
+              ? `${pullResult.imported} new booking${pullResult.imported !== 1 ? "s" : ""} imported`
+              : "No new bookings to import"
+            }
+          </div>
+          <div className="text-muted-foreground">
+            Total from AioSell: {pullResult.total ?? "—"} &nbsp;·&nbsp; Already existed: {pullResult.skipped}
+          </div>
+          {pullResult.errors && pullResult.errors.length > 0 && (
+            <div className="text-red-600 dark:text-red-400">{pullResult.errors.length} error(s): {pullResult.errors[0]}</div>
+          )}
+        </div>
+      )}
+
+      <details className="group">
+        <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground list-none flex items-center gap-1.5">
+          <ChevronDown className="h-3 w-3 group-open:rotate-180 transition-transform" />
+          If pull doesn't work — email AioSell to resend webhooks
+        </summary>
+        <div className="mt-2 space-y-2">
+          <div className="rounded-md border bg-muted/40 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground">Email to: support@aiosell.com</span>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={copyEmail} data-testid="button-copy-email">
+                  {copied ? <CheckCircle className="h-3 w-3 mr-1 text-green-600" /> : <Download className="h-3 w-3 mr-1" />}
+                  {copied ? "Copied!" : "Copy"}
+                </Button>
+                <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={openEmail} data-testid="button-open-email">
+                  <Link2 className="h-3 w-3 mr-1" />
+                  Open Mail
+                </Button>
+              </div>
+            </div>
+            <pre className="text-xs whitespace-pre-wrap text-foreground/80 font-mono leading-relaxed">{emailBody}</pre>
           </div>
         </div>
-        <pre className="text-xs whitespace-pre-wrap text-foreground/80 font-mono leading-relaxed">{emailBody}</pre>
-      </div>
+      </details>
 
       <div className="flex items-start gap-2 text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded p-2">
         <Wifi className="h-3.5 w-3.5 text-blue-500 flex-shrink-0 mt-0.5" />

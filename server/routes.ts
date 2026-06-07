@@ -25718,7 +25718,7 @@ Respond ONLY with valid JSON (no markdown, no extra text):
             const mapping = mappings.find(m => m.aiosellRoomCode === roomCode);
             if (mapping) {
               const [availableRoom] = await db.select({ id: rooms.id }).from(rooms).where(
-                and(eq(rooms.propertyId, config.propertyId), eq(rooms.type, mapping.hostezeeRoomType), eq(rooms.status, "available"))
+                and(eq(rooms.propertyId, config.propertyId), eq(rooms.roomType, mapping.hostezeeRoomType), eq(rooms.status, "available"))
               );
               if (availableRoom) assignedRoomId = availableRoom.id;
             }
