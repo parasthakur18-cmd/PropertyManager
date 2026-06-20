@@ -1,0 +1,127 @@
+Owner BI Enhancement Suggestion – Booking Source Intelligence & Executive Brief
+
+The Revenue Opportunity Dashboard is useful, but currently it only shows occupancy, ARR, unsold nights, and revenue opportunity at the property level.
+
+The biggest gap is that owners cannot identify which booking source is actually driving the business.
+
+Required Enhancement: Booking Source Filter
+
+Add a global filter:
+
+Booking Source
+
+* All Sources
+* OTA
+* Walk-in
+* Direct
+* Travel Agent
+* Group Booking
+* Corporate
+* Website Booking
+* Repeat Guest
+* Other
+
+This filter should update all Owner BI tabs including:
+
+* CEO Summary
+* Executive Dashboard
+* Property Scorecard
+* Monthly Sales
+* OTA vs Walk-in
+* Revenue Leakage
+* Opportunity Dashboard
+* Forecast Calculator
+
+---
+
+Group Booking Intelligence
+
+Currently major revenue comes from Group Bookings.
+
+If Group Booking revenue is mixed with Travel Agent or Direct bookings, owners cannot identify:
+
+* Which travel agent generates maximum revenue
+* Which groups generate highest ARR
+* Which groups generate highest occupancy
+* Which travel agents are worth focusing on
+* Which travel agents have declining business
+
+Add a dedicated Group Analysis section.
+
+Metrics:
+
+* Total Group Revenue
+* Total Group Room Nights
+* Group Occupancy Contribution %
+* Group ARR
+* Average Group Size
+* Top 10 Travel Agents
+* Top 10 Group Organizers
+* Revenue by Travel Agent
+* Revenue by Group Name
+* Repeat Group Business %
+
+---
+
+Source Contribution Dashboard
+
+Display:
+
+Booking Source | Revenue | Nights | Occupancy % | ARR | Contribution %
+
+Example:
+
+Travel Agent      ₹18,50,000   640 Nights   42%
+OTA               ₹9,20,000    320 Nights   21%
+Direct            ₹7,40,000    280 Nights   17%
+Walk-in           ₹4,10,000    150 Nights   10%
+Corporate         ₹2,90,000    110 Nights   7%
+Website           ₹1,10,000     35 Nights   3%
+
+This instantly shows what is driving the business.
+
+---
+
+Executive Brief (AI Summary)
+
+Add a "Brief Analysis" button.
+
+When clicked, AI generates a management summary:
+
+Example:
+
+Business Summary:
+
+* Occupancy is 20.5%, significantly below target.
+* 78% of revenue is generated from Group and Travel Agent bookings.
+* OTA contribution is only 12%, indicating weak online visibility.
+* Average ARR is ₹3,754 which is healthy.
+* Revenue opportunity of ₹11.2 lakh exists from unsold inventory.
+* Focus should be on increasing OTA visibility and converting travel agent demand into repeat direct bookings.
+
+Recommendations:
+
+1. Increase OTA occupancy during weekdays.
+2. Re-engage top performing travel agents.
+3. Launch direct booking campaigns.
+4. Introduce dynamic pricing for weekends.
+5. Target occupancy of 35% before increasing room inventory.
+
+---
+
+Top Travel Agent Report
+
+Add:
+
+* Revenue
+* Room Nights
+* Occupancy Contribution
+* Average Booking Value
+* Cancellation %
+* Repeat Business %
+
+This will help owners identify their most valuable partners.
+
+The dashboard should answer one simple question:
+
+"Where is my revenue actually coming from, and what should I do next to increase it?"

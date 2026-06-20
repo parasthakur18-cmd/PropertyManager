@@ -18,6 +18,7 @@ import {
   propertyTargets,
   otaCommissionRules,
   propertyInventoryCertifications,
+  travelAgents,
 } from "@shared/schema";
 import { eq, and, gte, lte, sql, inArray, isNull, isNotNull, ne, or, desc } from "drizzle-orm";
 
@@ -1953,5 +1954,133 @@ export async function getCeoSummary(filters: OwnerBIFilters) {
     outstanding,
     leakage,
     opportunity,
+  };
+}
+
+// ─────────────────────────────────────────────
+// PHASE 1.1 — NEW: Source Intelligence
+// ─────────────────────────────────────────────
+
+export async function getSourceIntelligence(filters: OwnerBIFilters) {
+  const start = new Date(filters.startDate + "T00:00:00.000Z");
+  const end   = new Date(filters.endDate   + "T23:59:59.999Z");
+
+  const conditions: any[] = [
+    gte(bills.createdAt, start),
+    lte(bills.createdAt, end),
+    eq(bills.paymentStatus, "paid"),
+  ];
+  if (filters.propertyIds?.length) {
+    conditions.push(inArray(bookings.propertyId, filters.propertyIds));
+  }
+
+  // Main query — includes travelAgentId + isGroupBooking
+  const rows = await db
+    .select({
+      bookingId:      bookings.id,
+      propertyId:     bookings.propertyId,
+      source:         bookings.source,
+      isGroupBooking: bookings.isGroupBooking,
+      travelAgentId:  bookings.travelAgentId,
+      checkInDate:    bookings.checkInDate,
+      checkOutDate:   bookings.checkOutDate,
+      roomCharges:    bills.roomCharges,
+      foodCharges:    bills.foodCharges,
+      extraCharges:   bills.extraCharges,
+    })
+    .from(bills)
+    .innerJoin(bookings, eq(bills.bookingId, bookings.id))
+    .where(and(...conditions));
+
+  // Source contribution table
+  const sourceMap: Record<string, { bookings: number; revenue: number; roomNights: number }> = {};
+  const agentMap:  Record<number, { bookings: number; revenue: number; roomNights: number }> = {};
+  let groupCount = 0; let groupRevenue = 0; let groupNights = 0;
+  const seenBookings = new Set<number>();
+
+  for (const r of rows) {
+    if (seenBookings.has(r.bookingId)) continue;
+    seenBookings.add(r.bookingId);
+
+    const ci = new Date(r.checkInDate); const co = new Date(r.checkOutDate);
+    const ciDay = new Date(ci.getFullYear(), ci.getMonth(), ci.getDate());
+    const coDay = new Date(co.getFullYear(), co.getMonth(), co.getDate());
+    const nights = Math.max(0, Math.floor((coDay.getTime() - ciDay.getTime()) / 86400000));
+    const rev = num(r.roomCharges) + num(r.foodCharges) + num(r.extraCharges);
+
+    const category = classifySource(r.source);
+    if (!sourceMap[category]) sourceMap[category] = { bookings: 0, revenue: 0, roomNights: 0 };
+    sourceMap[category].bookings++;
+    sourceMap[category].revenue += rev;
+    sourceMap[category].roomNights += nights;
+
+    if (r.travelAgentId) {
+      if (!agentMap[r.travelAgentId]) agentMap[r.travelAgentId] = { bookings: 0, revenue: 0, roomNights: 0 };
+      agentMap[r.travelAgentId].bookings++;
+      agentMap[r.travelAgentId].revenue += rev;
+      agentMap[r.travelAgentId].roomNights += nights;
+    }
+
+    if (r.isGroupBooking) { groupCount++; groupRevenue += rev; groupNights += nights; }
+  }
+
+  const totalRevenue  = Object.values(sourceMap).reduce((s, v) => s + v.revenue, 0);
+  const totalBookings = Object.values(sourceMap).reduce((s, v) => s + v.bookings, 0);
+  const totalNights   = Object.values(sourceMap).reduce((s, v) => s + v.roomNights, 0);
+
+  const categoryLabels: Record<string, string> = {
+    ota: "OTA", walk_in: "Walk-in", direct: "Direct", website: "Website",
+    corporate: "Corporate", travel_agent: "Travel Agent", group: "Group Booking", other: "Other",
+  };
+
+  const sources = Object.entries(sourceMap)
+    .map(([cat, d]) => ({
+      category: cat,
+      label: categoryLabels[cat] || cat,
+      bookings: d.bookings,
+      revenue: d.revenue,
+      roomNights: d.roomNights,
+      arr: d.roomNights > 0 ? d.revenue / d.roomNights : 0,
+      revenueSharePct: totalRevenue > 0 ? (d.revenue / totalRevenue) * 100 : 0,
+      bookingSharePct: totalBookings > 0 ? (d.bookings / totalBookings) * 100 : 0,
+    }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  // Fetch travel agent names
+  let agentNames: Record<number, string> = {};
+  const agentIds = Object.keys(agentMap).map(Number);
+  if (agentIds.length) {
+    const agentRows = await db.select({ id: travelAgents.id, name: travelAgents.name })
+      .from(travelAgents).where(inArray(travelAgents.id, agentIds));
+    agentNames = Object.fromEntries(agentRows.map(a => [a.id, a.name]));
+  }
+
+  const topAgents = Object.entries(agentMap)
+    .map(([idStr, d]) => {
+      const id = Number(idStr);
+      return {
+        id,
+        name: agentNames[id] || `Agent #${id}`,
+        bookings: d.bookings,
+        revenue: d.revenue,
+        roomNights: d.roomNights,
+        arr: d.roomNights > 0 ? d.revenue / d.roomNights : 0,
+        revenueSharePct: totalRevenue > 0 ? (d.revenue / totalRevenue) * 100 : 0,
+      };
+    })
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 15);
+
+  return {
+    sources,
+    topAgents,
+    totals: { revenue: totalRevenue, bookings: totalBookings, roomNights: totalNights },
+    groupStats: {
+      bookings: groupCount,
+      revenue: groupRevenue,
+      roomNights: groupNights,
+      arr: groupNights > 0 ? groupRevenue / groupNights : 0,
+      revenueSharePct: totalRevenue > 0 ? (groupRevenue / totalRevenue) * 100 : 0,
+    },
   };
 }

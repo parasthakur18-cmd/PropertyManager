@@ -11,7 +11,7 @@ import {
   ArrowUpRight, ArrowDownRight, RefreshCw, Filter,
   Bed, Star, ShieldAlert, Eye, Calculator,
   CheckCircle2, XCircle, Plus, Save, Pencil, ChevronDown, ChevronUp,
-  Zap, Clock, Package, AlertCircle, Building2,
+  Zap, Clock, Package, AlertCircle, Building2, Sparkles, Network,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -2029,6 +2029,267 @@ function ActionCenterTab({ filters }: { filters: FilterState }) {
   );
 }
 
+// ─── Source Intelligence Tab ──────────────────────────────────────────────────
+
+const SOURCE_COLORS: Record<string, string> = {
+  ota: "#2BB6A8", walk_in: "#F2B705", direct: "#1E3A5F", travel_agent: "#8B5CF6",
+  group: "#EC4899", corporate: "#F97316", website: "#06B6D4", other: "#94A3B8",
+};
+
+function SourceIntelligenceTab({ filters }: { filters: FilterState }) {
+  const qp = buildQP(filters);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiBrief, setAiBrief] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["/api/owner/source-intelligence", filters],
+    queryFn: () => fetch(`/api/owner/source-intelligence?${qp}`).then(r => r.json()),
+    staleTime: 60000,
+  });
+
+  const fmt = (n: number) => `₹${(n / 100000).toFixed(1)}L`;
+  const fmtN = (n: number) => n.toLocaleString("en-IN");
+
+  const handleAiBrief = async () => {
+    if (!data) return;
+    setAiLoading(true); setAiBrief(null);
+    try {
+      const topSources = (data.sources || []).slice(0, 5).map((s: any) =>
+        `${s.label}: ₹${(s.revenue/1000).toFixed(0)}K (${s.revenueSharePct.toFixed(1)}%), ${s.roomNights} nights, ARR ₹${s.arr.toFixed(0)}`
+      ).join("\n");
+      const topAgents = (data.topAgents || []).slice(0, 5).map((a: any) =>
+        `${a.name}: ₹${(a.revenue/1000).toFixed(0)}K, ${a.bookings} bookings`
+      ).join("\n");
+      const prompt = `You are a hotel business analyst. Analyze this booking source intelligence and provide a concise executive brief (5-8 bullet points) with actionable recommendations.\n\nPeriod: ${filters.startDate} to ${filters.endDate}\nTotal Revenue: ${fmt(data.totals?.revenue || 0)}\nTotal Bookings: ${data.totals?.bookings || 0}\nTotal Room Nights: ${data.totals?.roomNights || 0}\n\nSource Breakdown:\n${topSources}\n\nTop Travel Agents:\n${topAgents}\n\nGroup Bookings: ${data.groupStats?.bookings || 0} bookings, ${fmt(data.groupStats?.revenue || 0)} revenue (${data.groupStats?.revenueSharePct?.toFixed(1) || 0}% of total)\n\nProvide: 1) What is driving the business 2) Key gaps/opportunities 3) 3-4 specific action recommendations. Be direct and data-driven.`;
+      const res = await fetch("/api/pms-analytics-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: prompt }),
+      });
+      if (!res.ok) throw new Error("AI request failed");
+      const json = await res.json();
+      setAiBrief(json.response || "Could not generate brief.");
+    } catch {
+      setAiBrief("Could not generate AI brief. Please try again.");
+    } finally { setAiLoading(false); }
+  };
+
+  if (isLoading) return <div className="p-8 text-center text-muted-foreground">Loading source intelligence...</div>;
+  if (!data) return <div className="p-8 text-center text-muted-foreground">No data available.</div>;
+
+  const sources: any[] = data.sources || [];
+  const topAgents: any[] = data.topAgents || [];
+  const totals = data.totals || { revenue: 0, bookings: 0, roomNights: 0 };
+  const groupStats = data.groupStats || {};
+
+  const pieData = sources.map(s => ({ name: s.label, value: s.revenue, color: SOURCE_COLORS[s.category] || "#94A3B8" }));
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            <Network className="h-5 w-5 text-primary" />
+            Booking Source Intelligence
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">Where is your revenue actually coming from?</p>
+        </div>
+        <Button onClick={handleAiBrief} disabled={aiLoading} className="gap-2" data-testid="button-ai-brief">
+          <Sparkles className="h-4 w-4" />
+          {aiLoading ? "Generating..." : "AI Executive Brief"}
+        </Button>
+      </div>
+
+      {/* AI Brief output */}
+      {aiBrief && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />AI Executive Brief
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-sm whitespace-pre-wrap leading-relaxed">{aiBrief}</div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* KPI Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: "Total Revenue", value: fmt(totals.revenue), sub: `${fmtN(totals.bookings)} bookings`, icon: <DollarSign className="h-4 w-4" /> },
+          { label: "Room Nights", value: fmtN(totals.roomNights), sub: "across all sources", icon: <Bed className="h-4 w-4" /> },
+          { label: "Group Revenue", value: fmt(groupStats.revenue || 0), sub: `${groupStats.bookings || 0} group bookings`, icon: <Users className="h-4 w-4" /> },
+          { label: "Group Share", value: `${(groupStats.revenueSharePct || 0).toFixed(1)}%`, sub: "of total revenue", icon: <BarChart3 className="h-4 w-4" /> },
+        ].map(k => (
+          <Card key={k.label}>
+            <CardContent className="pt-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-xs text-muted-foreground">{k.label}</p>
+                  <p className="text-2xl font-bold mt-1">{k.value}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{k.sub}</p>
+                </div>
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">{k.icon}</div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Source Contribution Table */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Source Contribution Dashboard</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Source</TableHead>
+                  <TableHead className="text-xs text-right">Revenue</TableHead>
+                  <TableHead className="text-xs text-right">Nights</TableHead>
+                  <TableHead className="text-xs text-right">ARR</TableHead>
+                  <TableHead className="text-xs text-right">Bookings</TableHead>
+                  <TableHead className="text-xs text-right">Share</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sources.map(s => (
+                  <TableRow key={s.category}>
+                    <TableCell className="py-2">
+                      <div className="flex items-center gap-2">
+                        <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: SOURCE_COLORS[s.category] || "#94A3B8" }} />
+                        <span className="text-xs font-medium">{s.label}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs text-right font-mono">{fmt(s.revenue)}</TableCell>
+                    <TableCell className="text-xs text-right">{fmtN(s.roomNights)}</TableCell>
+                    <TableCell className="text-xs text-right font-mono">₹{fmtN(Math.round(s.arr))}</TableCell>
+                    <TableCell className="text-xs text-right">{s.bookings}</TableCell>
+                    <TableCell className="py-2 text-right">
+                      <div className="flex items-center gap-1 justify-end">
+                        <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${Math.min(100, s.revenueSharePct)}%`, backgroundColor: SOURCE_COLORS[s.category] || "#94A3B8" }} />
+                        </div>
+                        <span className="text-xs text-muted-foreground w-8 text-right">{s.revenueSharePct.toFixed(0)}%</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {sources.length === 0 && (
+                  <TableRow><TableCell colSpan={6} className="text-center text-xs text-muted-foreground py-8">No data for this period</TableCell></TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        {/* Revenue by Source Pie */}
+        <Card>
+          <CardHeader className="pb-3"><CardTitle className="text-sm">Revenue Mix</CardTitle></CardHeader>
+          <CardContent>
+            {pieData.length > 0 ? (
+              <>
+                <ResponsiveContainer width="100%" height={180}>
+                  <PieChart>
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={40} outerRadius={75} dataKey="value" paddingAngle={2}>
+                      {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                    </Pie>
+                    <Tooltip formatter={(v: any) => fmt(Number(v))} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-1 mt-2">
+                  {pieData.map((e, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <div className="h-2 w-2 rounded-full" style={{ backgroundColor: e.color }} />
+                        <span className="text-muted-foreground truncate max-w-[100px]">{e.name}</span>
+                      </div>
+                      <span className="font-medium">{fmt(e.value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="h-40 flex items-center justify-center text-muted-foreground text-xs">No data</div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Top Travel Agents */}
+      {topAgents.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Users className="h-4 w-4 text-purple-500" />Top Travel Agents
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">#</TableHead>
+                  <TableHead className="text-xs">Agent Name</TableHead>
+                  <TableHead className="text-xs text-right">Revenue</TableHead>
+                  <TableHead className="text-xs text-right">Room Nights</TableHead>
+                  <TableHead className="text-xs text-right">Bookings</TableHead>
+                  <TableHead className="text-xs text-right">ARR</TableHead>
+                  <TableHead className="text-xs text-right">Share</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {topAgents.map((a, i) => (
+                  <TableRow key={a.id}>
+                    <TableCell className="text-xs text-muted-foreground py-2">{i + 1}</TableCell>
+                    <TableCell className="text-xs font-medium py-2">{a.name}</TableCell>
+                    <TableCell className="text-xs text-right py-2 font-mono">{fmt(a.revenue)}</TableCell>
+                    <TableCell className="text-xs text-right py-2">{fmtN(a.roomNights)}</TableCell>
+                    <TableCell className="text-xs text-right py-2">{a.bookings}</TableCell>
+                    <TableCell className="text-xs text-right py-2 font-mono">₹{fmtN(Math.round(a.arr))}</TableCell>
+                    <TableCell className="text-xs text-right py-2">
+                      <Badge variant="secondary" className="text-xs">{a.revenueSharePct.toFixed(1)}%</Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Group Booking Intelligence */}
+      {groupStats.bookings > 0 && (
+        <Card className="border-pink-200 dark:border-pink-900">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2 text-pink-600">
+              <Users className="h-4 w-4" />Group Booking Intelligence
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { label: "Group Revenue", value: fmt(groupStats.revenue) },
+                { label: "Group Room Nights", value: fmtN(groupStats.roomNights) },
+                { label: "Group ARR", value: `₹${fmtN(Math.round(groupStats.arr))}` },
+                { label: "Revenue Contribution", value: `${(groupStats.revenueSharePct || 0).toFixed(1)}%` },
+              ].map(k => (
+                <div key={k.label} className="text-center p-3 rounded-lg bg-pink-50 dark:bg-pink-950/20">
+                  <p className="text-lg font-bold text-pink-700 dark:text-pink-300">{k.value}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{k.label}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function OwnerDashboard() {
@@ -2104,6 +2365,9 @@ export default function OwnerDashboard() {
           <TabsTrigger value="actions" className="text-xs" data-testid="tab-actions">
             ⚡ Action Center
           </TabsTrigger>
+          <TabsTrigger value="source-intel" className="text-xs" data-testid="tab-source-intel">
+            <Network className="h-3 w-3 mr-1" />Source Intel
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="ceo"><CeoSummaryDashboard filters={filters} /></TabsContent>
@@ -2119,6 +2383,7 @@ export default function OwnerDashboard() {
         <TabsContent value="rooms"><RoomCertificationTab filters={filters} /></TabsContent>
         <TabsContent value="opportunity"><RevenueOpportunityTab filters={filters} /></TabsContent>
         <TabsContent value="actions"><ActionCenterTab filters={filters} /></TabsContent>
+        <TabsContent value="source-intel"><SourceIntelligenceTab filters={filters} /></TabsContent>
       </Tabs>
     </div>
   );

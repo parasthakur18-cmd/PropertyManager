@@ -8456,6 +8456,18 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         res.status(500).json({ message: e.message || "Failed" });
       }
     });
+
+    app.get("/api/owner/source-intelligence", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const { getSourceIntelligence } = await import("./owner-bi");
+        const data = await getSourceIntelligence(parseFilters(req));
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/source-intelligence", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
   }
   // ── End of Owner BI Module ────────────────────────────────────────────
 
