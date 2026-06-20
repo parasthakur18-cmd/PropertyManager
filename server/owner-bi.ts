@@ -27,9 +27,12 @@ import { eq, and, gte, lte, sql, inArray, isNull, isNotNull, ne, or, desc } from
 // ─────────────────────────────────────────────
 
 export interface OwnerBIFilters {
-  startDate: string; // YYYY-MM-DD
-  endDate: string;   // YYYY-MM-DD
+  startDate: string;      // YYYY-MM-DD
+  endDate: string;        // YYYY-MM-DD
   propertyIds?: number[]; // empty = all
+  sources?: string[];     // e.g. ["booking_com","walk_in","travel_agent"]
+  statuses?: string[];    // e.g. ["checked_out","cancelled"]
+  roomTypes?: string[];   // e.g. ["Deluxe Room","Cottage"]
 }
 
 // ─────────────────────────────────────────────
@@ -75,6 +78,32 @@ export function classifySource(source: string | null): string {
 }
 
 // ─────────────────────────────────────────────
+// Source filter matcher — maps UI filter keys to raw booking source strings
+// ─────────────────────────────────────────────
+
+export function matchesSourceFilter(raw: string | null | undefined, sources: string[]): boolean {
+  if (!sources.length) return true;
+  const s = (raw || "").toLowerCase().trim();
+  return sources.some((key) => {
+    switch (key) {
+      case "booking_com":   return s.includes("booking.com") || s.includes("bookingcom");
+      case "agoda":         return s.includes("agoda");
+      case "airbnb":        return s.includes("airbnb");
+      case "mmt":           return s.includes("mmt") || s.includes("makemytrip");
+      case "goibibo":       return s.includes("goibibo");
+      case "hostelworld":   return s.includes("hostelworld");
+      case "walk_in":       return WALKIN_SOURCES.some((w) => s === w || s.includes(w));
+      case "direct":        return classifySource(raw ?? null) === "direct";
+      case "travel_agent":  return TRAVEL_AGENT_SOURCES.some((t) => s === t || s.includes(t));
+      case "corporate":     return CORPORATE_SOURCES.some((c) => s.includes(c));
+      case "online":        return s === "online";
+      case "other":         return s === "others" || s === "other";
+      default:              return false;
+    }
+  });
+}
+
+// ─────────────────────────────────────────────
 // Helper: build property filter
 // ─────────────────────────────────────────────
 
@@ -108,7 +137,7 @@ async function getBillsInRange(filters: OwnerBIFilters) {
   const start = new Date(filters.startDate + "T00:00:00.000Z");
   const end = new Date(filters.endDate + "T23:59:59.999Z");
 
-  const conditions = [
+  const conditions: any[] = [
     gte(bills.createdAt, start),
     lte(bills.createdAt, end),
     eq(bills.paymentStatus, "paid"),
@@ -116,8 +145,11 @@ async function getBillsInRange(filters: OwnerBIFilters) {
   if (filters.propertyIds?.length) {
     conditions.push(inArray(bookings.propertyId, filters.propertyIds));
   }
+  if (filters.statuses?.length) {
+    conditions.push(inArray(bookings.status as any, filters.statuses));
+  }
 
-  return await db
+  const rows = await db
     .select({
       bookingId: bookings.id,
       propertyId: bookings.propertyId,
@@ -136,10 +168,22 @@ async function getBillsInRange(filters: OwnerBIFilters) {
       billTotal: bills.totalAmount,
       paymentStatus: bills.paymentStatus,
       balanceAmount: bills.balanceAmount,
+      roomType: rooms.roomType,
     })
     .from(bills)
     .innerJoin(bookings, eq(bills.bookingId, bookings.id))
+    .leftJoin(rooms, eq(bookings.roomId, rooms.id))
     .where(and(...conditions));
+
+  // JS-side post-filters (classification logic lives in code, not SQL)
+  let result = rows;
+  if (filters.sources?.length) {
+    result = result.filter((r) => matchesSourceFilter(r.source, filters.sources!));
+  }
+  if (filters.roomTypes?.length) {
+    result = result.filter((r) => r.roomType != null && filters.roomTypes!.includes(r.roomType));
+  }
+  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -210,7 +254,7 @@ async function getCancelledInRange(filters: OwnerBIFilters) {
   const start = new Date(filters.startDate + "T00:00:00.000Z");
   const end = new Date(filters.endDate + "T23:59:59.999Z");
 
-  const conditions = [
+  const conditions: any[] = [
     eq(bookings.status, "cancelled"),
     gte(bookings.cancellationDate, start),
     lte(bookings.cancellationDate, end),
@@ -219,19 +263,31 @@ async function getCancelledInRange(filters: OwnerBIFilters) {
     conditions.push(inArray(bookings.propertyId, filters.propertyIds));
   }
 
-  return await db
+  const rows = await db
     .select({
       id: bookings.id,
       propertyId: bookings.propertyId,
+      source: bookings.source,
       totalAmount: bookings.totalAmount,
       cancellationDate: bookings.cancellationDate,
       refundAmount: bookings.refundAmount,
       cancellationCharges: bookings.cancellationCharges,
       checkInDate: bookings.checkInDate,
       checkOutDate: bookings.checkOutDate,
+      roomType: rooms.roomType,
     })
     .from(bookings)
+    .leftJoin(rooms, eq(bookings.roomId, rooms.id))
     .where(and(...conditions));
+
+  let result = rows;
+  if (filters.sources?.length) {
+    result = result.filter((r) => matchesSourceFilter(r.source, filters.sources!));
+  }
+  if (filters.roomTypes?.length) {
+    result = result.filter((r) => r.roomType != null && filters.roomTypes!.includes(r.roomType));
+  }
+  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -242,7 +298,7 @@ async function getNoShowsInRange(filters: OwnerBIFilters) {
   const start = new Date(filters.startDate + "T00:00:00.000Z");
   const end = new Date(filters.endDate + "T23:59:59.999Z");
 
-  const conditions = [
+  const conditions: any[] = [
     eq(bookings.status, "no_show"),
     gte(bookings.noShowDate, start),
     lte(bookings.noShowDate, end),
@@ -251,18 +307,30 @@ async function getNoShowsInRange(filters: OwnerBIFilters) {
     conditions.push(inArray(bookings.propertyId, filters.propertyIds));
   }
 
-  return await db
+  const rows = await db
     .select({
       id: bookings.id,
       propertyId: bookings.propertyId,
+      source: bookings.source,
       totalAmount: bookings.totalAmount,
       noShowDate: bookings.noShowDate,
       noShowCharges: bookings.noShowCharges,
       checkInDate: bookings.checkInDate,
       checkOutDate: bookings.checkOutDate,
+      roomType: rooms.roomType,
     })
     .from(bookings)
+    .leftJoin(rooms, eq(bookings.roomId, rooms.id))
     .where(and(...conditions));
+
+  let result = rows;
+  if (filters.sources?.length) {
+    result = result.filter((r) => matchesSourceFilter(r.source, filters.sources!));
+  }
+  if (filters.roomTypes?.length) {
+    result = result.filter((r) => r.roomType != null && filters.roomTypes!.includes(r.roomType));
+  }
+  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -1896,11 +1964,12 @@ export async function getCeoSummary(filters: OwnerBIFilters) {
   const propIds = filters.propertyIds;
 
   // Today's revenue from bills
+  const extraFilters = { sources: filters.sources, statuses: filters.statuses, roomTypes: filters.roomTypes };
   const [todayBills, yesterdayBills, monthBills, outstandingBills, monthTargets, snapshotData, opportunityData] =
     await Promise.all([
-      getBillsInRange({ startDate: todayStr, endDate: todayStr, propertyIds: propIds }),
-      getBillsInRange({ startDate: ydayStr, endDate: ydayStr, propertyIds: propIds }),
-      getBillsInRange({ startDate: monthStart, endDate: todayStr, propertyIds: propIds }),
+      getBillsInRange({ startDate: todayStr, endDate: todayStr, propertyIds: propIds, ...extraFilters }),
+      getBillsInRange({ startDate: ydayStr, endDate: ydayStr, propertyIds: propIds, ...extraFilters }),
+      getBillsInRange({ startDate: monthStart, endDate: todayStr, propertyIds: propIds, ...extraFilters }),
       getOutstandingBills(propIds),
       (async () => {
         const t = await db.select().from(propertyTargets).where(and(
@@ -1986,12 +2055,17 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
   const prevEnd   = new Date(start.getTime() - 1);
   const prevStart = new Date(prevEnd.getTime() - durationMs);
 
+  if (filters.statuses?.length) {
+    conditions.push(inArray(bookings.status as any, filters.statuses));
+  }
+
   // Main query — joins guests (fullName) + rooms (roomType) for proper organizer attribution
-  const rows = await db
+  const rawRows = await db
     .select({
       bookingId:      bookings.id,
       propertyId:     bookings.propertyId,
       source:         bookings.source,
+      status:         bookings.status,
       isGroupBooking: bookings.isGroupBooking,
       travelAgentId:  bookings.travelAgentId,
       guestFullName:  guests.fullName,
@@ -2007,6 +2081,15 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
     .leftJoin(guests, eq(bookings.guestId, guests.id))
     .leftJoin(rooms, eq(bookings.roomId, rooms.id))
     .where(and(...conditions));
+
+  // JS-side post-filters
+  let rows = rawRows;
+  if (filters.sources?.length) {
+    rows = rows.filter((r) => matchesSourceFilter(r.source, filters.sources!));
+  }
+  if (filters.roomTypes?.length) {
+    rows = rows.filter((r) => r.roomType != null && filters.roomTypes!.includes(r.roomType));
+  }
 
   // Source contribution table
   const sourceMap: Record<string, { bookings: number; revenue: number; roomNights: number }> = {};
@@ -2249,4 +2332,18 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
     roomTypeBreakdown,
     forecast,
   };
+}
+
+// ─────────────────────────────────────────────
+// Distinct room types — for filter dropdown
+// ─────────────────────────────────────────────
+
+export async function getDistinctRoomTypes(propertyIds?: number[]): Promise<string[]> {
+  const cond = propertyIds?.length ? inArray(rooms.propertyId, propertyIds) : undefined;
+  const rows = await db
+    .selectDistinct({ roomType: rooms.roomType })
+    .from(rooms)
+    .where(cond)
+    .orderBy(rooms.roomType);
+  return rows.map((r) => r.roomType).filter(Boolean) as string[];
 }

@@ -8209,14 +8209,20 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     };
 
     const parseFilters = (req: any) => {
-      const { startDate, endDate, propertyIds } = req.query;
+      const { startDate, endDate, propertyIds, sources, statuses, roomTypes } = req.query;
       const ids = propertyIds
         ? String(propertyIds).split(",").map(Number).filter(Boolean)
         : [];
+      const srcArr = sources ? String(sources).split(",").filter(Boolean) : [];
+      const statArr = statuses ? String(statuses).split(",").filter(Boolean) : [];
+      const rtArr = roomTypes ? String(roomTypes).split(",").filter(Boolean) : [];
       return {
         startDate: String(startDate || new Date().toISOString().split("T")[0]),
         endDate: String(endDate || new Date().toISOString().split("T")[0]),
         propertyIds: ids.length ? ids : undefined,
+        sources: srcArr.length ? srcArr : undefined,
+        statuses: statArr.length ? statArr : undefined,
+        roomTypes: rtArr.length ? rtArr : undefined,
       };
     };
 
@@ -8330,6 +8336,21 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         res.json(data);
       } catch (e: any) {
         console.error("[Owner BI] /api/owner/ceo-summary", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+
+    app.get("/api/owner/room-types", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const { getDistinctRoomTypes } = await import("./owner-bi");
+        const ids = req.query.propertyIds
+          ? String(req.query.propertyIds).split(",").map(Number).filter(Boolean)
+          : undefined;
+        const data = await getDistinctRoomTypes(ids);
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/room-types", e);
         res.status(500).json({ message: e.message || "Failed" });
       }
     });

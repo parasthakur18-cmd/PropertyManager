@@ -151,6 +151,9 @@ interface FilterState {
   startDate: string;
   endDate: string;
   propertyIds: string;
+  sources: string;   // comma-separated source keys e.g. "booking_com,mmt"
+  statuses: string;  // comma-separated statuses e.g. "checked_out,cancelled"
+  roomTypes: string; // comma-separated room type names
 }
 
 function PropertyMultiSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -235,6 +238,12 @@ function GlobalFilters({ filters, onChange }: { filters: FilterState; onChange: 
     onChange({ ...filters, preset, ...range });
   };
 
+  const hasActiveFilters = !!(filters.sources || filters.statuses || filters.roomTypes || filters.propertyIds);
+
+  const handleReset = () => {
+    onChange({ ...filters, sources: "", statuses: "", roomTypes: "", propertyIds: "" });
+  };
+
   return (
     <div className="flex flex-wrap items-center gap-2 p-3 bg-muted/30 rounded-lg border">
       <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -289,7 +298,174 @@ function GlobalFilters({ filters, onChange }: { filters: FilterState; onChange: 
         value={filters.propertyIds}
         onChange={(v) => onChange({ ...filters, propertyIds: v })}
       />
+
+      <MultiSelectDropdown
+        options={SOURCE_OPTIONS}
+        value={filters.sources}
+        onChange={(v) => onChange({ ...filters, sources: v })}
+        placeholder="All Sources"
+        icon={<Globe className="h-3 w-3 text-muted-foreground shrink-0" />}
+      />
+
+      <MultiSelectDropdown
+        options={STATUS_OPTIONS}
+        value={filters.statuses}
+        onChange={(v) => onChange({ ...filters, statuses: v })}
+        placeholder="All Statuses"
+        icon={<CheckCircle2 className="h-3 w-3 text-muted-foreground shrink-0" />}
+      />
+
+      <RoomTypeMultiSelect
+        value={filters.roomTypes}
+        onChange={(v) => onChange({ ...filters, roomTypes: v })}
+        propertyIds={filters.propertyIds}
+      />
+
+      {hasActiveFilters && (
+        <button
+          type="button"
+          onClick={handleReset}
+          className="flex items-center gap-1 h-8 px-3 rounded-md border border-dashed text-xs text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors"
+          data-testid="filter-reset"
+        >
+          <XCircle className="h-3 w-3" /> Reset
+        </button>
+      )}
     </div>
+  );
+}
+
+// ─── Reusable Multi-Select Dropdown ───────────────────────────────────────────
+
+interface MultiSelectOption { value: string; label: string; }
+
+function MultiSelectDropdown({
+  options, value, onChange, placeholder, icon,
+}: {
+  options: MultiSelectOption[]; value: string; onChange: (v: string) => void;
+  placeholder: string; icon?: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const selected = value ? value.split(",").filter(Boolean) : [];
+  const toggle = (v: string) => {
+    const next = selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v];
+    onChange(next.join(","));
+  };
+  const filtered = options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()));
+  const label =
+    selected.length === 0 ? placeholder
+    : selected.length === 1 ? (options.find((o) => o.value === selected[0])?.label ?? selected[0])
+    : `${selected.length} selected`;
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 h-8 px-3 rounded-md border bg-background text-xs font-medium hover:bg-muted/50 transition-colors min-w-[130px] justify-between"
+      >
+        <span className="flex items-center gap-1.5 truncate">
+          {icon}
+          <span className="truncate">{label}</span>
+        </span>
+        <span className="flex items-center gap-1 shrink-0">
+          {selected.length > 0 && (
+            <span className="text-[10px] bg-primary text-primary-foreground rounded-full px-1.5 py-0.5">
+              {selected.length}
+            </span>
+          )}
+          <ChevronDown className="h-3 w-3 text-muted-foreground" />
+        </span>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-9 z-50 w-52 bg-popover border rounded-md shadow-lg py-1">
+            <div className="px-2 pb-1">
+              <input
+                className="w-full text-xs border rounded px-2 py-1 bg-background"
+                placeholder="Search..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+            <button
+              type="button"
+              className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/50 ${selected.length === 0 ? "font-semibold text-primary" : ""}`}
+              onClick={() => { onChange(""); setOpen(false); }}
+            >
+              <div className={`h-3.5 w-3.5 rounded border flex items-center justify-center shrink-0 ${selected.length === 0 ? "bg-primary border-primary" : "border-muted-foreground"}`}>
+                {selected.length === 0 && <CheckCircle2 className="h-3 w-3 text-primary-foreground" />}
+              </div>
+              All
+            </button>
+            <div className="border-t my-1" />
+            <div className="max-h-48 overflow-y-auto">
+              {filtered.map((opt) => {
+                const checked = selected.includes(opt.value);
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/50 ${checked ? "font-medium" : ""}`}
+                    onClick={() => toggle(opt.value)}
+                  >
+                    <div className={`h-3.5 w-3.5 rounded border flex items-center justify-center shrink-0 ${checked ? "bg-primary border-primary" : "border-muted-foreground"}`}>
+                      {checked && <CheckCircle2 className="h-3 w-3 text-primary-foreground" />}
+                    </div>
+                    <span className="truncate">{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const SOURCE_OPTIONS: MultiSelectOption[] = [
+  { value: "booking_com",  label: "Booking.com" },
+  { value: "agoda",        label: "Agoda" },
+  { value: "airbnb",       label: "Airbnb" },
+  { value: "mmt",          label: "MMT" },
+  { value: "goibibo",      label: "Goibibo" },
+  { value: "hostelworld",  label: "Hostelworld" },
+  { value: "walk_in",      label: "Walk-in" },
+  { value: "direct",       label: "Direct" },
+  { value: "travel_agent", label: "Travel Agent" },
+  { value: "corporate",    label: "Corporate" },
+  { value: "online",       label: "Online" },
+  { value: "other",        label: "Others" },
+];
+
+const STATUS_OPTIONS: MultiSelectOption[] = [
+  { value: "checked_out", label: "Checked Out" },
+  { value: "checked_in",  label: "Checked In" },
+  { value: "confirmed",   label: "Confirmed" },
+  { value: "pending",     label: "Pending" },
+  { value: "cancelled",   label: "Cancelled" },
+  { value: "no_show",     label: "No Show" },
+];
+
+function RoomTypeMultiSelect({ value, onChange, propertyIds }: { value: string; onChange: (v: string) => void; propertyIds: string }) {
+  const qp = propertyIds ? `?propertyIds=${encodeURIComponent(propertyIds)}` : "";
+  const { data: roomTypes = [] } = useQuery<string[]>({
+    queryKey: ["/api/owner/room-types", propertyIds],
+    queryFn: () => fetch(`/api/owner/room-types${qp}`).then((r) => r.json()),
+    staleTime: 300000,
+  });
+  const options = roomTypes.map((rt) => ({ value: rt, label: rt }));
+  return (
+    <MultiSelectDropdown
+      options={options}
+      value={value}
+      onChange={onChange}
+      placeholder="All Room Types"
+      icon={<Bed className="h-3 w-3 text-muted-foreground shrink-0" />}
+    />
   );
 }
 
@@ -300,7 +476,10 @@ function buildQP(filters: FilterState, extra?: Record<string, string>) {
     startDate: filters.startDate,
     endDate: filters.endDate,
   };
-  if (filters.propertyIds.trim()) p.propertyIds = filters.propertyIds.trim();
+  if (filters.propertyIds?.trim()) p.propertyIds = filters.propertyIds.trim();
+  if (filters.sources?.trim())     p.sources     = filters.sources.trim();
+  if (filters.statuses?.trim())    p.statuses    = filters.statuses.trim();
+  if (filters.roomTypes?.trim())   p.roomTypes   = filters.roomTypes.trim();
   if (extra) Object.assign(p, extra);
   return "?" + new URLSearchParams(p).toString();
 }
@@ -1256,7 +1435,7 @@ function RevenueLeakageDashboard({ filters }: { filters: FilterState }) {
 // ─── Dashboard 6: Daily Snapshot ─────────────────────────────────────────────
 
 function DailySnapshot({ filters }: { filters: FilterState }) {
-  const qp = filters.propertyIds ? `?propertyIds=${filters.propertyIds}` : "";
+  const qp = buildQP(filters);
   const { data, isLoading, refetch } = useQuery<any>({
     queryKey: ["/api/owner/daily-snapshot", qp],
     queryFn: () => fetch(`/api/owner/daily-snapshot${qp}`).then((r) => r.json()),
@@ -1451,10 +1630,10 @@ function ForecastCalculator({ filters }: { filters: FilterState }) {
 // ─── CEO Summary Dashboard ────────────────────────────────────────────────────
 
 function CeoSummaryDashboard({ filters }: { filters: FilterState }) {
-  const params = new URLSearchParams({ propertyIds: filters.propertyIds });
+  const qp = buildQP(filters);
   const { data, isLoading } = useQuery<any>({
-    queryKey: ["/api/owner/ceo-summary", filters.propertyIds],
-    queryFn: () => fetch(`/api/owner/ceo-summary?${params}`).then((r) => r.json()),
+    queryKey: ["/api/owner/ceo-summary", qp],
+    queryFn: () => fetch(`/api/owner/ceo-summary${qp}`).then((r) => r.json()),
     staleTime: 60000,
   });
 
@@ -1614,10 +1793,10 @@ function PropertyTargetsTab({ filters }: { filters: FilterState }) {
   const [year, setYear] = useState(now.getFullYear());
   const [editing, setEditing] = useState<Record<number, any>>({});
 
-  const params = new URLSearchParams({ propertyIds: filters.propertyIds, month: String(month), year: String(year) });
+  const qp = buildQP(filters, { month: String(month), year: String(year) });
   const { data, isLoading } = useQuery<any>({
-    queryKey: ["/api/owner/targets", filters.propertyIds, month, year],
-    queryFn: () => fetch(`/api/owner/targets?${params}`).then((r) => r.json()),
+    queryKey: ["/api/owner/targets", qp],
+    queryFn: () => fetch(`/api/owner/targets${qp}`).then((r) => r.json()),
     staleTime: 60000,
   });
 
@@ -1753,11 +1932,11 @@ function OtaPlusCommissionTab({ filters }: { filters: FilterState }) {
   const qc = useQueryClient();
   const [editRule, setEditRule] = useState<{ sourceName: string; commissionPct: string } | null>(null);
 
-  const params = new URLSearchParams({ startDate: filters.startDate, endDate: filters.endDate, propertyIds: filters.propertyIds });
+  const qp = buildQP(filters);
 
   const { data, isLoading } = useQuery<any>({
-    queryKey: ["/api/owner/ota-with-commissions", filters.startDate, filters.endDate, filters.propertyIds],
-    queryFn: () => fetch(`/api/owner/ota-with-commissions?${params}`).then((r) => r.json()),
+    queryKey: ["/api/owner/ota-with-commissions", qp],
+    queryFn: () => fetch(`/api/owner/ota-with-commissions${qp}`).then((r) => r.json()),
     staleTime: 60000,
   });
 
@@ -1917,10 +2096,10 @@ function RoomCertificationTab({ filters }: { filters: FilterState }) {
   const now = new Date();
   const [notes, setNotes] = useState<Record<number, string>>({});
 
-  const params = new URLSearchParams({ propertyIds: filters.propertyIds });
+  const qp = buildQP(filters);
   const { data, isLoading, refetch } = useQuery<any[]>({
-    queryKey: ["/api/owner/inventory-certification", filters.propertyIds],
-    queryFn: () => fetch(`/api/owner/inventory-certification?${params}`).then((r) => r.json()),
+    queryKey: ["/api/owner/inventory-certification", qp],
+    queryFn: () => fetch(`/api/owner/inventory-certification${qp}`).then((r) => r.json()),
     staleTime: 60000,
   });
 
@@ -2029,10 +2208,10 @@ function RoomCertificationTab({ filters }: { filters: FilterState }) {
 // ─── Revenue Opportunity Dashboard ────────────────────────────────────────────
 
 function RevenueOpportunityTab({ filters }: { filters: FilterState }) {
-  const params = new URLSearchParams({ startDate: filters.startDate, endDate: filters.endDate, propertyIds: filters.propertyIds });
+  const qp = buildQP(filters);
   const { data, isLoading } = useQuery<any>({
-    queryKey: ["/api/owner/revenue-opportunity", filters.startDate, filters.endDate, filters.propertyIds],
-    queryFn: () => fetch(`/api/owner/revenue-opportunity?${params}`).then((r) => r.json()),
+    queryKey: ["/api/owner/revenue-opportunity", qp],
+    queryFn: () => fetch(`/api/owner/revenue-opportunity${qp}`).then((r) => r.json()),
     staleTime: 60000,
   });
 
@@ -2139,10 +2318,10 @@ function RevenueOpportunityTab({ filters }: { filters: FilterState }) {
 // ─── Action Center Tab ────────────────────────────────────────────────────────
 
 function ActionCenterTab({ filters }: { filters: FilterState }) {
-  const params = new URLSearchParams({ startDate: filters.startDate, endDate: filters.endDate, propertyIds: filters.propertyIds });
+  const qp = buildQP(filters);
   const { data, isLoading } = useQuery<any>({
-    queryKey: ["/api/owner/action-center", filters.startDate, filters.endDate, filters.propertyIds],
-    queryFn: () => fetch(`/api/owner/action-center?${params}`).then((r) => r.json()),
+    queryKey: ["/api/owner/action-center", qp],
+    queryFn: () => fetch(`/api/owner/action-center${qp}`).then((r) => r.json()),
     staleTime: 60000,
   });
 
@@ -3283,6 +3462,9 @@ export default function OwnerDashboard() {
     startDate: monthStart,
     endDate: today,
     propertyIds: "",
+    sources: "",
+    statuses: "",
+    roomTypes: "",
   });
 
   const [activeTab, setActiveTab] = useState("executive");

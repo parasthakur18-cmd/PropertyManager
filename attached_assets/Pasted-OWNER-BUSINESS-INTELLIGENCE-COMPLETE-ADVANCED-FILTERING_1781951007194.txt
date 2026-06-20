@@ -1,0 +1,286 @@
+OWNER BUSINESS INTELLIGENCE – COMPLETE ADVANCED FILTERING SYSTEM
+
+Upgrade the Owner Business Intelligence Dashboard into a fully interactive analytics platform by adding powerful filters that work across the entire BI module.
+
+====================================================
+FILTER BAR
+====================================================
+
+Current:
+[Date Range] [Property]
+
+New:
+[Date Range] [Property] [Booking Source] [Booking Status] [Room Type]
+
+All filters must work together and affect every KPI, chart, table, ranking, insight, and report.
+
+====================================================
+FILTER 1 – PROPERTY
+====================================================
+
+Keep existing property filter.
+
+Requirements:
+- Single Select
+- Multi Select
+- All Properties option
+
+====================================================
+FILTER 2 – BOOKING SOURCE
+====================================================
+
+Multi-select dropdown.
+
+Allowed Categories:
+
+- Booking.com
+- Agoda
+- Airbnb
+- MMT
+- Goibibo
+- Hostelworld
+- Walk-in
+- Direct
+- Travel Agent
+- Corporate
+- Online
+- Others
+
+Requirements:
+
+- Multi Select
+- Searchable
+- Select All
+- Default = All Sources
+- Show selected count
+
+Source Mapping:
+
+Any booking source not matching a known category should automatically be grouped under "Others".
+
+====================================================
+FILTER 3 – BOOKING STATUS
+====================================================
+
+Options:
+
+- All
+- Checked Out
+- Checked In
+- Confirmed
+- Pending
+- Cancelled
+- No Show
+
+Requirements:
+
+Status filter must impact all dashboard calculations.
+
+Examples:
+
+Checked Out:
+- Realized Revenue
+- Actual Occupancy
+- Actual ARR
+
+Cancelled:
+- Cancellation Analysis
+- Revenue Leakage
+
+No Show:
+- No Show Analysis
+
+====================================================
+FILTER 4 – ROOM TYPE
+====================================================
+
+Dynamic Multi Select.
+
+Fetch room types directly from room inventory.
+
+Examples:
+
+- Deluxe Room
+- Premium Room
+- Family Room
+- Cottage
+- Tree House
+- Dormitory
+- Suite
+
+Requirements:
+
+- Multi Select
+- Searchable
+- Select All
+- Default = All Room Types
+
+====================================================
+FILTER ENGINE LOGIC
+====================================================
+
+Filters must work simultaneously.
+
+Example:
+
+Property:
+Blue Mont Sojha
+
+Booking Source:
+Booking.com
+
+Status:
+Checked Out
+
+Room Type:
+Tree House
+
+Dashboard should only analyze records matching ALL selected filters.
+
+====================================================
+APPLY FILTERS TO ALL BI MODULES
+====================================================
+
+The filters must affect ALL Owner BI sections:
+
+- CEO Summary
+- Executive Dashboard
+- Property Scorecard
+- Monthly Sales
+- OTA vs Walk-in
+- OTA Commission Analysis
+- Revenue Leakage
+- Daily Snapshot
+- Forecast Calculator
+- Targets
+- Room Certification
+- Opportunity Center
+- Action Center
+- Source Intelligence
+
+No widget should ignore active filters.
+
+====================================================
+RECALCULATE ALL KPIs
+====================================================
+
+When any filter changes, recalculate:
+
+Revenue Metrics:
+- Total Revenue
+- Room Revenue
+- Food Revenue
+- Other Revenue
+
+Booking Metrics:
+- Total Bookings
+- Checked In
+- Checked Out
+- Confirmed
+- Pending
+- Cancelled
+- No Show
+
+Performance Metrics:
+- Occupancy %
+- ARR
+- ADR
+- RevPAR
+- Room Nights
+- Unsold Nights
+
+OTA Metrics:
+- OTA Revenue
+- Direct Revenue
+- Walk-in Revenue
+- Travel Agent Revenue
+- OTA Commission
+- Net OTA Revenue
+
+Leakage Metrics:
+- Cancellation Loss
+- No Show Loss
+- Outstanding Revenue
+
+Forecast Metrics:
+- Revenue Forecast
+- Occupancy Forecast
+- Target Achievement
+
+====================================================
+CHARTS & TABLES
+====================================================
+
+Every chart and table must respect active filters:
+
+- Monthly Revenue Trends
+- Property Rankings
+- OTA Performance
+- Source Analysis
+- Occupancy Trends
+- ARR Trends
+- RevPAR Trends
+- Revenue Leakage
+- Cancellation Analysis
+- Forecast Charts
+
+====================================================
+AI INSIGHTS
+====================================================
+
+AI Insights must use only filtered data.
+
+Example:
+
+Selected Filters:
+- Booking.com
+- Checked Out
+- Tree House
+- Blue Mont Sojha
+
+AI analysis should only evaluate that filtered dataset.
+
+Never use unfiltered data when filters are active.
+
+====================================================
+RESET FILTERS
+====================================================
+
+Add Reset Filters button.
+
+Behavior:
+
+- Clear Property Filter
+- Clear Booking Source Filter
+- Clear Booking Status Filter
+- Clear Room Type Filter
+- Keep current Date Range
+
+====================================================
+PERFORMANCE REQUIREMENTS
+====================================================
+
+- Apply filters once to the dataset.
+- Reuse filtered data across all cards and reports.
+- Avoid duplicate calculations.
+- Use memoization/caching where possible.
+- Maintain smooth performance for large booking datasets.
+
+====================================================
+SUCCESS CRITERIA
+====================================================
+
+Owners should instantly answer:
+
+- How much revenue came from Booking.com?
+- Which room type has the highest ARR?
+- Which room type has the highest occupancy?
+- What is the RevPAR of Tree House rooms?
+- How many checked-out bookings came from Agoda?
+- What is the cancellation loss from MMT bookings?
+- Which property depends most on OTA business?
+- Which room category performs best in each property?
+- What is the revenue contribution of Travel Agents?
+- Which booking source generates the most profit?
+
+without exporting data to Excel and while keeping all BI dashboards synchronized with the selected filters.
