@@ -8318,6 +8318,144 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         res.status(500).json({ message: e.message || "Failed" });
       }
     });
+
+    // ── Phase 1.1 routes ──────────────────────────────────────────────────
+
+    // CEO Summary
+    app.get("/api/owner/ceo-summary", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const { getCeoSummary } = await import("./owner-bi");
+        const data = await getCeoSummary(parseFilters(req));
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/ceo-summary", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+
+    // Targets — GET with actuals
+    app.get("/api/owner/targets", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const { getTargetsWithActuals } = await import("./owner-bi");
+        const now = new Date();
+        const month = parseInt(String(req.query.month || now.getMonth() + 1));
+        const year = parseInt(String(req.query.year || now.getFullYear()));
+        const data = await getTargetsWithActuals(parseFilters(req), month, year);
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/targets", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+
+    // Targets — POST / PUT (upsert)
+    app.post("/api/owner/targets", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const { upsertTarget } = await import("./owner-bi");
+        const user = req.user;
+        const data = await upsertTarget({ ...req.body, createdBy: user?.id });
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] POST /api/owner/targets", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+
+    // OTA Commissions — GET
+    app.get("/api/owner/ota-commissions", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const { getOtaCommissionRules } = await import("./owner-bi");
+        const data = await getOtaCommissionRules();
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/ota-commissions", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+
+    // OTA Commissions — POST (upsert rule)
+    app.post("/api/owner/ota-commissions", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const { upsertOtaCommissionRule } = await import("./owner-bi");
+        const data = await upsertOtaCommissionRule(req.body);
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] POST /api/owner/ota-commissions", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+
+    // OTA with Commissions Analytics
+    app.get("/api/owner/ota-with-commissions", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const { getOtaWithCommissions } = await import("./owner-bi");
+        const data = await getOtaWithCommissions(parseFilters(req));
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/ota-with-commissions", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+
+    // Inventory Certification — GET status
+    app.get("/api/owner/inventory-certification", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const { getInventoryStatus } = await import("./owner-bi");
+        const filters = parseFilters(req);
+        const data = await getInventoryStatus(filters.propertyIds);
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/inventory-certification", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+
+    // Inventory Certification — POST (certify)
+    app.post("/api/owner/inventory-certification", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const { createCertification } = await import("./owner-bi");
+        const user = req.user;
+        const data = await createCertification({ ...req.body, certifiedBy: user?.id });
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] POST /api/owner/inventory-certification", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+
+    // Revenue Opportunity
+    app.get("/api/owner/revenue-opportunity", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const { getRevenueOpportunity } = await import("./owner-bi");
+        const data = await getRevenueOpportunity(parseFilters(req));
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/revenue-opportunity", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+
+    // Action Center
+    app.get("/api/owner/action-center", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const { getActionCenter } = await import("./owner-bi");
+        const data = await getActionCenter(parseFilters(req));
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/action-center", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
   }
   // ── End of Owner BI Module ────────────────────────────────────────────
 

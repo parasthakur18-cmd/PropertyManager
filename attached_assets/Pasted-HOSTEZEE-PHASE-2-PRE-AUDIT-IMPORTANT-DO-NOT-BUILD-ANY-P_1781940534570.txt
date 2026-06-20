@@ -1,0 +1,273 @@
+HOSTEZEE PHASE 2 PRE-AUDIT
+
+IMPORTANT
+
+DO NOT BUILD ANY PHASE 2 FEATURES YET.
+
+Before writing any code, perform a complete audit of existing modules, reports, APIs and calculations.
+
+The goal is to identify:
+
+1. Already Existing Features
+2. Existing But Hidden Features
+3. Existing But Incomplete Features
+4. Duplicate Features
+5. Features Actually Missing
+
+====================================================
+AUDIT MODULES
+=============
+
+Review:
+
+* Dashboard
+* Analytics
+* Booking Analytics
+* Performance Analytics
+* P&L Statement
+* Monthly Report
+* Z Report
+* Food Orders Report
+* Services Report
+* Wallets
+* Expenses
+* Salaries
+* Lease Management
+* Inventory
+* Room Management
+* Calendar
+* Revenue Reports
+* Vendor Reports
+* Owner BI Phase 1
+* Owner BI Phase 1.1
+
+====================================================
+MODULE 1
+PROPERTY P&L
+============
+
+Audit:
+
+Do we already have:
+
+* Property Revenue
+* Property Expenses
+* Gross Profit
+* Net Profit
+* Profit Margin
+
+Report:
+
+Available
+Partially Available
+Missing
+
+Show exact routes and APIs.
+
+====================================================
+MODULE 2
+ROOM PERFORMANCE
+================
+
+Audit:
+
+Do we already have:
+
+* Room Revenue
+* Room Occupancy
+* Room ARR
+* Room Booking Count
+* Room Nights
+
+Show:
+
+Database Fields
+
+Existing Reports
+
+Missing Calculations
+
+====================================================
+MODULE 3
+ROOM TYPE ANALYTICS
+===================
+
+Audit:
+
+Do we already have:
+
+* Room Type Revenue
+* Room Type Occupancy
+* Room Type ARR
+* Room Type RevPAR
+
+If yes:
+
+Where?
+
+If no:
+
+What data is available?
+
+====================================================
+MODULE 4
+OCCUPANCY HEATMAP
+=================
+
+Audit:
+
+Can existing calendar data already support:
+
+Room × Date occupancy heatmap?
+
+If yes:
+
+What is missing?
+
+Only UI?
+
+Or backend too?
+
+====================================================
+MODULE 5
+FOOD BUSINESS INTELLIGENCE
+==========================
+
+Audit:
+
+Existing food reports.
+
+Show:
+
+Food Revenue
+
+Orders
+
+Average Bill
+
+Top Items
+
+Top Categories
+
+Food Cost
+
+Margins
+
+What already exists?
+
+What is missing?
+
+====================================================
+MODULE 6
+CASHFLOW DASHBOARD
+==================
+
+Audit:
+
+Existing:
+
+Wallets
+
+Cash Book
+
+Bank Book
+
+Vendor Payables
+
+Outstanding Collections
+
+Daily Cash Position
+
+What already exists?
+
+What calculations already exist?
+
+====================================================
+MODULE 7
+FORECASTING
+===========
+
+Audit:
+
+Existing occupancy calculator.
+
+Existing revenue calculator.
+
+Existing forecasting logic.
+
+What is reusable?
+
+====================================================
+MODULE 8
+MULTI PROPERTY COMPARISON
+=========================
+
+Audit:
+
+What comparisons already exist in:
+
+Analytics
+
+Performance Analytics
+
+Owner BI
+
+What is still missing?
+
+====================================================
+MODULE 9
+AI INSIGHTS
+===========
+
+Audit:
+
+What insight generation already exists?
+
+What can be reused?
+
+What still needs development?
+
+====================================================
+FINAL REPORT REQUIRED
+=====================
+
+Create a table.
+
+Feature
+
+Already Exists
+
+Partially Exists
+
+Missing
+
+Route
+
+API
+
+Reusable %
+
+Estimated Work
+
+====================================================
+PHASE 2 OUTPUT
+==============
+
+After audit provide:
+
+1. Features already available
+2. Features that should be moved into Owner BI
+3. Features that should be merged
+4. Features that are duplicated
+5. Features actually missing
+6. Recommended Phase 2 build scope
+
+DO NOT WRITE CODE.
+
+DO NOT CREATE ROUTES.
+
+DO NOT CREATE TABLES.
+
+DO NOT MODIFY EXISTING MODULES.
+
+ONLY AUDIT AND REPORT.

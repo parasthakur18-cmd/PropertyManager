@@ -1433,6 +1433,61 @@ export async function runStartupMigrations(): Promise<void> {
   } catch (err: any) {
     console.warn(`[AIOSELL-HEAL] room type mismatch repair: ${err.message}`);
   }
+
+  try {
+    await addOwnerBiPhase11Tables();
+  } catch (err: any) {
+    console.warn(`[MIGRATE] owner_bi_phase11_tables: ${err.message}`);
+  }
+
+  try {
+    const { seedDefaultOtaCommissions } = await import("./owner-bi");
+    await seedDefaultOtaCommissions();
+  } catch (err: any) {
+    console.warn(`[SEED] ota_commission_rules: ${err.message}`);
+  }
+}
+
+async function addOwnerBiPhase11Tables(): Promise<void> {
+  await runRaw(`CREATE TABLE IF NOT EXISTS property_targets (
+    id SERIAL PRIMARY KEY,
+    property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+    month INTEGER NOT NULL,
+    year INTEGER NOT NULL,
+    revenue_target NUMERIC(12,2) NOT NULL DEFAULT 0,
+    occupancy_target NUMERIC(5,2) NOT NULL DEFAULT 0,
+    arr_target NUMERIC(10,2) NOT NULL DEFAULT 0,
+    food_revenue_target NUMERIC(12,2) NOT NULL DEFAULT 0,
+    created_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+  )`);
+  await runRaw(`CREATE UNIQUE INDEX IF NOT EXISTS idx_property_targets_prop_month_year
+    ON property_targets (property_id, month, year)`).catch(() => {});
+
+  await runRaw(`CREATE TABLE IF NOT EXISTS ota_commission_rules (
+    id SERIAL PRIMARY KEY,
+    source_name VARCHAR(100) NOT NULL UNIQUE,
+    commission_pct NUMERIC(5,2) NOT NULL DEFAULT 0,
+    active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+  )`);
+
+  await runRaw(`CREATE TABLE IF NOT EXISTS property_inventory_certifications (
+    id SERIAL PRIMARY KEY,
+    property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+    month INTEGER NOT NULL,
+    year INTEGER NOT NULL,
+    active_rooms INTEGER NOT NULL DEFAULT 0,
+    out_of_order_rooms INTEGER NOT NULL DEFAULT 0,
+    saleable_rooms INTEGER NOT NULL DEFAULT 0,
+    certified_by VARCHAR(255),
+    certified_at TIMESTAMP DEFAULT NOW(),
+    notes TEXT
+  )`);
+  await runRaw(`CREATE UNIQUE INDEX IF NOT EXISTS idx_prop_inv_cert_prop_month_year
+    ON property_inventory_certifications (property_id, month, year)`).catch(() => {});
 }
 
 /**

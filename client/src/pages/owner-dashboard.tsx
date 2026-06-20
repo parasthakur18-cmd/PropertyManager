@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -10,6 +10,8 @@ import {
   AlertTriangle, Target, Globe, Lightbulb, BarChart3,
   ArrowUpRight, ArrowDownRight, RefreshCw, Filter,
   Bed, Star, ShieldAlert, Eye, Calculator,
+  CheckCircle2, XCircle, Plus, Save, Pencil, ChevronDown, ChevronUp,
+  Zap, Clock, Package, AlertCircle, Building2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,7 +27,9 @@ import {
 } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1263,6 +1267,700 @@ function ForecastCalculator({ filters }: { filters: FilterState }) {
   );
 }
 
+// ─── CEO Summary Dashboard ────────────────────────────────────────────────────
+
+function CeoSummaryDashboard({ filters }: { filters: FilterState }) {
+  const params = new URLSearchParams({ propertyIds: filters.propertyIds });
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["/api/owner/ceo-summary", filters.propertyIds],
+    queryFn: () => fetch(`/api/owner/ceo-summary?${params}`).then((r) => r.json()),
+    staleTime: 60000,
+  });
+
+  const INR_compact = (v: number) => {
+    if (!v) return "₹0";
+    if (v >= 10000000) return `₹${(v / 10000000).toFixed(1)}Cr`;
+    if (v >= 100000) return `₹${(v / 100000).toFixed(1)}L`;
+    if (v >= 1000) return `₹${(v / 1000).toFixed(0)}K`;
+    return `₹${v.toFixed(0)}`;
+  };
+
+  if (isLoading) return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <Card key={i}><CardContent className="p-4"><Skeleton className="h-16 w-full" /></CardContent></Card>
+      ))}
+    </div>
+  );
+
+  const d = data || {};
+  const todayVsYday = d.yesterday > 0 ? ((d.today - d.yesterday) / d.yesterday) * 100 : null;
+  const ach = d.targetAchievement;
+
+  const kpis = [
+    { title: "Today's Revenue", value: INR_compact(d.today), sub: d.yesterday ? `vs ₹${(d.yesterday / 1000).toFixed(0)}K yesterday` : undefined, trend: todayVsYday, icon: <DollarSign className="h-4 w-4 text-emerald-600" />, color: "emerald" },
+    { title: "Month to Date", value: INR_compact(d.monthToDate), sub: d.monthTarget ? `Target: ${INR_compact(d.monthTarget)}` : undefined, icon: <TrendingUp className="h-4 w-4 text-blue-600" />, color: "blue" },
+    { title: "Target Achievement", value: ach !== null ? `${ach}%` : "No target", sub: ach !== null ? (ach >= 100 ? "🎯 On track" : ach >= 80 ? "⚠️ Close" : "❌ Behind") : "Set targets to track", icon: <Target className="h-4 w-4 text-violet-600" />, color: "violet" },
+    { title: "Occupancy (MTD)", value: `${(d.occupancy || 0).toFixed(1)}%`, sub: `ARR ${INR_compact(d.arr)}`, icon: <Bed className="h-4 w-4 text-teal-600" />, color: "teal" },
+    { title: "RevPAR", value: INR_compact(d.revpar), sub: "Revenue per available room", icon: <Hotel className="h-4 w-4 text-indigo-600" />, color: "indigo" },
+    { title: "Outstanding", value: INR_compact(d.outstanding), sub: "Uncollected bills", icon: <AlertTriangle className="h-4 w-4 text-amber-600" />, color: "amber" },
+    { title: "Revenue Opportunity", value: INR_compact(d.opportunity), sub: "Unsold room nights (MTD)", icon: <Lightbulb className="h-4 w-4 text-orange-600" />, color: "orange" },
+    { title: "Pending Bills", value: INR_compact(d.leakage), sub: "Not yet paid", icon: <Clock className="h-4 w-4 text-red-600" />, color: "red" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Zap className="h-5 w-5 text-yellow-500" />
+        <h2 className="font-semibold text-lg">CEO Snapshot — Live Business Health</h2>
+        <Badge variant="outline" className="text-xs">Month to Date</Badge>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {kpis.map((k) => (
+          <KpiCard key={k.title} {...k} />
+        ))}
+      </div>
+
+      {/* Target gauge */}
+      {ach !== null && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">Monthly Revenue Target Progress</span>
+              <span className="text-sm font-bold">{ach}%</span>
+            </div>
+            <div className="w-full h-3 rounded-full bg-muted overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${ach >= 100 ? "bg-emerald-500" : ach >= 80 ? "bg-amber-400" : "bg-red-500"}`}
+                style={{ width: `${Math.min(ach, 100)}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+              <span>₹0</span>
+              <span>{INR_compact(d.monthTarget || 0)}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─── Property Targets Tab ─────────────────────────────────────────────────────
+
+function PropertyTargetsTab({ filters }: { filters: FilterState }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const now = new Date();
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
+  const [editing, setEditing] = useState<Record<number, any>>({});
+
+  const params = new URLSearchParams({ propertyIds: filters.propertyIds, month: String(month), year: String(year) });
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["/api/owner/targets", filters.propertyIds, month, year],
+    queryFn: () => fetch(`/api/owner/targets?${params}`).then((r) => r.json()),
+    staleTime: 60000,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (payload: any) => apiRequest("POST", "/api/owner/targets", payload),
+    onSuccess: () => {
+      toast({ title: "Target saved" });
+      qc.invalidateQueries({ queryKey: ["/api/owner/targets"] });
+      qc.invalidateQueries({ queryKey: ["/api/owner/ceo-summary"] });
+      setEditing({});
+    },
+    onError: () => toast({ title: "Failed to save", variant: "destructive" }),
+  });
+
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  const startEdit = (prop: any) => {
+    setEditing((e) => ({
+      ...e,
+      [prop.propertyId]: {
+        revenue: prop.targets.revenue || "",
+        occupancy: prop.targets.occupancy || "",
+        arr: prop.targets.arr || "",
+        food: prop.targets.food || "",
+      },
+    }));
+  };
+
+  const saveTarget = (prop: any) => {
+    const e = editing[prop.propertyId];
+    saveMutation.mutate({
+      propertyId: prop.propertyId, month, year,
+      revenueTarget: Number(e.revenue), occupancyTarget: Number(e.occupancy),
+      arrTarget: Number(e.arr), foodRevenueTarget: Number(e.food),
+    });
+  };
+
+  const AchBadge = ({ pct }: { pct: number | null }) => {
+    if (pct === null) return <Badge variant="outline" className="text-xs">No target</Badge>;
+    const cls = pct >= 100 ? "bg-emerald-100 text-emerald-800" : pct >= 80 ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800";
+    return <Badge className={`text-xs ${cls}`}>{pct}%</Badge>;
+  };
+
+  const years = [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <Target className="h-5 w-5 text-violet-600" />
+          <h2 className="font-semibold text-lg">Property Targets vs Actuals</h2>
+        </div>
+        <div className="flex gap-2">
+          <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
+            <SelectTrigger className="w-[110px] h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>{MONTHS.map((m, i) => <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>)}</SelectContent>
+          </Select>
+          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+            <SelectTrigger className="w-[90px] h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>{years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Card key={i}><CardContent className="p-4"><Skeleton className="h-24 w-full" /></CardContent></Card>)}</div>
+      ) : (
+        <div className="space-y-4">
+          {(data?.properties || []).map((prop: any) => {
+            const e = editing[prop.propertyId];
+            const isEditing = !!e;
+            return (
+              <Card key={prop.propertyId} className="overflow-hidden">
+                <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                    {prop.propertyName}
+                  </CardTitle>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => isEditing ? saveTarget(prop) : startEdit(prop)} disabled={saveMutation.isPending}>
+                    {isEditing ? <><Save className="h-3 w-3 mr-1" />Save</> : <><Pencil className="h-3 w-3 mr-1" />Set Target</>}
+                  </Button>
+                </CardHeader>
+                <CardContent className="pb-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {[
+                      { key: "revenue", label: "Revenue Target", actual: prop.actuals.revenue, target: prop.targets.revenue, fmt: INR, pct: prop.achievement.revenue },
+                      { key: "occupancy", label: "Occupancy %", actual: prop.actuals.occupancy, target: prop.targets.occupancy, fmt: (v: number) => `${v.toFixed(1)}%`, pct: prop.achievement.occupancy },
+                      { key: "arr", label: "ARR Target", actual: prop.actuals.arr, target: prop.targets.arr, fmt: INR, pct: prop.achievement.arr },
+                      { key: "food", label: "Food Revenue", actual: prop.actuals.food, target: prop.targets.food, fmt: INR, pct: prop.achievement.food },
+                    ].map(({ key, label, actual, target, fmt, pct }) => (
+                      <div key={key} className="p-3 rounded-lg bg-muted/40 space-y-1">
+                        <p className="text-xs text-muted-foreground font-medium">{label}</p>
+                        {isEditing ? (
+                          <Input
+                            type="number"
+                            className="h-7 text-xs"
+                            value={e[key] || ""}
+                            onChange={(ev) => setEditing((prev) => ({ ...prev, [prop.propertyId]: { ...prev[prop.propertyId], [key]: ev.target.value } }))}
+                            placeholder={`Target ${key}`}
+                          />
+                        ) : (
+                          <p className="text-sm font-bold">{target ? fmt(target) : <span className="text-muted-foreground text-xs">Not set</span>}</p>
+                        )}
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-xs text-muted-foreground">Actual: {fmt(actual)}</span>
+                          <AchBadge pct={pct} />
+                        </div>
+                        {target > 0 && (
+                          <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden mt-1">
+                            <div className={`h-full rounded-full ${(pct || 0) >= 100 ? "bg-emerald-500" : (pct || 0) >= 80 ? "bg-amber-400" : "bg-red-500"}`} style={{ width: `${Math.min(pct || 0, 100)}%` }} />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+          {(data?.properties || []).length === 0 && (
+            <Card><CardContent className="p-8 text-center text-muted-foreground">No properties found. Check property access.</CardContent></Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── OTA + Commission Analytics Tab ──────────────────────────────────────────
+
+function OtaPlusCommissionTab({ filters }: { filters: FilterState }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [editRule, setEditRule] = useState<{ sourceName: string; commissionPct: string } | null>(null);
+
+  const params = new URLSearchParams({ startDate: filters.startDate, endDate: filters.endDate, propertyIds: filters.propertyIds });
+
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["/api/owner/ota-with-commissions", filters.startDate, filters.endDate, filters.propertyIds],
+    queryFn: () => fetch(`/api/owner/ota-with-commissions?${params}`).then((r) => r.json()),
+    staleTime: 60000,
+  });
+
+  const { data: rules } = useQuery<any[]>({
+    queryKey: ["/api/owner/ota-commissions"],
+    queryFn: () => fetch("/api/owner/ota-commissions").then((r) => r.json()),
+    staleTime: 120000,
+  });
+
+  const saveRule = useMutation({
+    mutationFn: (payload: any) => apiRequest("POST", "/api/owner/ota-commissions", payload),
+    onSuccess: () => {
+      toast({ title: "Commission rule saved" });
+      qc.invalidateQueries({ queryKey: ["/api/owner/ota-commissions"] });
+      qc.invalidateQueries({ queryKey: ["/api/owner/ota-with-commissions"] });
+      setEditRule(null);
+    },
+    onError: () => toast({ title: "Failed", variant: "destructive" }),
+  });
+
+  const rows = data?.rows || [];
+  const totals = data?.totals || {};
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Globe className="h-5 w-5 text-blue-600" />
+        <h2 className="font-semibold text-lg">OTA Analytics + Commission Tracking</h2>
+      </div>
+
+      {/* Commission Rules Panel */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Star className="h-4 w-4" /> OTA Commission Rules
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+            {(rules || []).map((rule: any) => (
+              <div key={rule.id} className="p-2 border rounded-lg space-y-1">
+                <p className="text-xs font-medium capitalize">{rule.sourceName}</p>
+                {editRule?.sourceName === rule.sourceName ? (
+                  <div className="flex gap-1">
+                    <Input type="number" className="h-6 text-xs w-16" value={editRule.commissionPct} onChange={(e) => setEditRule({ ...editRule, commissionPct: e.target.value })} />
+                    <Button size="sm" className="h-6 px-1" onClick={() => saveRule.mutate({ sourceName: editRule.sourceName, commissionPct: Number(editRule.commissionPct) })}>
+                      <Save className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline" className="text-xs">{rule.commissionPct}%</Badge>
+                    <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => setEditRule({ sourceName: rule.sourceName, commissionPct: String(rule.commissionPct) })}>
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+            {/* Add new rule */}
+            <div className="p-2 border border-dashed rounded-lg">
+              {editRule?.sourceName === "__new__" ? (
+                <div className="space-y-1">
+                  <Input className="h-6 text-xs" placeholder="OTA name" value={editRule.commissionPct === "" ? "" : ""} onChange={(e) => setEditRule({ sourceName: e.target.value, commissionPct: editRule.commissionPct })} />
+                  <div className="flex gap-1">
+                    <Input type="number" className="h-6 text-xs w-16" placeholder="%" value={editRule.commissionPct} onChange={(e) => setEditRule({ ...editRule, commissionPct: e.target.value })} />
+                    <Button size="sm" className="h-6 px-1" onClick={() => saveRule.mutate({ sourceName: editRule.sourceName, commissionPct: Number(editRule.commissionPct) })}>
+                      <Save className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button variant="ghost" size="sm" className="h-full w-full text-xs text-muted-foreground" onClick={() => setEditRule({ sourceName: "__new__", commissionPct: "" })}>
+                  <Plus className="h-3 w-3 mr-1" /> Add OTA
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Summary KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiCard title="OTA Gross Revenue" value={INR(totals.otaRevenue)} loading={isLoading} icon={<Globe className="h-4 w-4 text-blue-600" />} color="blue" />
+        <KpiCard title="Total Commission Paid" value={INR(totals.otaCommission)} sub="Fees to OTAs" loading={isLoading} icon={<DollarSign className="h-4 w-4 text-red-600" />} color="red" />
+        <KpiCard title="Net OTA Revenue" value={INR(totals.netOtaRevenue)} sub="After commission" loading={isLoading} icon={<TrendingUp className="h-4 w-4 text-emerald-600" />} color="emerald" />
+        <KpiCard title="Effective Margin" value={totals.otaRevenue > 0 ? `${((totals.netOtaRevenue / totals.otaRevenue) * 100).toFixed(1)}%` : "—"} sub="Net / Gross" loading={isLoading} icon={<Target className="h-4 w-4 text-violet-600" />} color="violet" />
+      </div>
+
+      {/* Per-OTA breakdown table */}
+      {isLoading ? <Card><CardContent className="p-4"><Skeleton className="h-40 w-full" /></CardContent></Card> : rows.length === 0 ? (
+        <Card><CardContent className="p-8 text-center text-muted-foreground">No OTA bookings in this period.</CardContent></Card>
+      ) : (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Per-OTA Breakdown</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>OTA</TableHead>
+                    <TableHead className="text-right">Bookings</TableHead>
+                    <TableHead className="text-right">Gross Revenue</TableHead>
+                    <TableHead className="text-right">Commission %</TableHead>
+                    <TableHead className="text-right">Commission ₹</TableHead>
+                    <TableHead className="text-right">Net Revenue</TableHead>
+                    <TableHead className="text-right">ARR</TableHead>
+                    <TableHead className="text-right">Share</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((r: any) => (
+                    <TableRow key={r.source}>
+                      <TableCell className="font-medium capitalize">{r.source || "Unknown"}</TableCell>
+                      <TableCell className="text-right">{r.bookings}</TableCell>
+                      <TableCell className="text-right">{INR(r.grossRevenue)}</TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant="outline" className={`text-xs ${r.commissionPct >= 18 ? "border-red-300 text-red-700" : "border-green-300 text-green-700"}`}>{r.commissionPct}%</Badge>
+                      </TableCell>
+                      <TableCell className="text-right text-red-600">{INR(r.commissionAmount)}</TableCell>
+                      <TableCell className="text-right text-emerald-600 font-medium">{INR(r.netRevenue)}</TableCell>
+                      <TableCell className="text-right">{INR(r.arr)}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <span className="text-xs">{r.revenueShare.toFixed(1)}%</span>
+                          <div className="w-12 h-1.5 rounded-full bg-muted overflow-hidden">
+                            <div className="h-full rounded-full bg-blue-500" style={{ width: `${r.revenueShare}%` }} />
+                          </div>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─── Room Inventory Certification Tab ────────────────────────────────────────
+
+function RoomCertificationTab({ filters }: { filters: FilterState }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const now = new Date();
+  const [notes, setNotes] = useState<Record<number, string>>({});
+
+  const params = new URLSearchParams({ propertyIds: filters.propertyIds });
+  const { data, isLoading, refetch } = useQuery<any[]>({
+    queryKey: ["/api/owner/inventory-certification", filters.propertyIds],
+    queryFn: () => fetch(`/api/owner/inventory-certification?${params}`).then((r) => r.json()),
+    staleTime: 60000,
+  });
+
+  const certMutation = useMutation({
+    mutationFn: (payload: any) => apiRequest("POST", "/api/owner/inventory-certification", payload),
+    onSuccess: () => {
+      toast({ title: "Room inventory certified ✓" });
+      qc.invalidateQueries({ queryKey: ["/api/owner/inventory-certification"] });
+    },
+    onError: () => toast({ title: "Certification failed", variant: "destructive" }),
+  });
+
+  const certify = (prop: any) => {
+    certMutation.mutate({
+      propertyId: prop.propertyId,
+      month: now.getMonth() + 1,
+      year: now.getFullYear(),
+      activeRooms: prop.activeRooms,
+      outOfOrderRooms: prop.outOfOrderRooms,
+      saleableRooms: prop.saleableRooms,
+      notes: notes[prop.propertyId] || "",
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Package className="h-5 w-5 text-teal-600" />
+        <h2 className="font-semibold text-lg">Room Inventory Certification</h2>
+        <Badge variant="outline" className="text-xs">{now.toLocaleString("en", { month: "long" })} {now.getFullYear()}</Badge>
+      </div>
+      <p className="text-sm text-muted-foreground">Certify the correct number of saleable rooms for each property this month. Alerts you when room count changes since last certification.</p>
+
+      {isLoading ? (
+        <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Card key={i}><CardContent className="p-4"><Skeleton className="h-20 w-full" /></CardContent></Card>)}</div>
+      ) : (
+        <div className="space-y-3">
+          {(data || []).map((prop: any) => (
+            <Card key={prop.propertyId} className={`border-l-4 ${prop.certifiedThisMonth && !prop.alert ? "border-l-emerald-500" : prop.alert ? "border-l-amber-500" : "border-l-muted"}`}>
+              <CardContent className="p-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold text-sm">{prop.propertyName}</h3>
+                      {prop.certifiedThisMonth ? (
+                        <Badge className="bg-emerald-100 text-emerald-800 text-xs"><CheckCircle2 className="h-3 w-3 mr-1" />Certified</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs text-amber-700 border-amber-300"><AlertCircle className="h-3 w-3 mr-1" />Pending</Badge>
+                      )}
+                    </div>
+                    {prop.alert && (
+                      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 flex items-start gap-1">
+                        <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+                        {prop.alert}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-3 md:grid-cols-5 gap-2 text-xs">
+                      {[
+                        { label: "Configured", value: prop.configuredRooms },
+                        { label: "Active", value: prop.activeRooms },
+                        { label: "Out of Order", value: prop.outOfOrderRooms },
+                        { label: "Saleable", value: prop.saleableRooms, highlight: true },
+                        { label: "Certified (last)", value: prop.certSaleableRooms ?? "—" },
+                      ].map(({ label, value, highlight }) => (
+                        <div key={label} className={`p-2 rounded bg-muted/40 ${highlight ? "bg-teal-50 dark:bg-teal-950" : ""}`}>
+                          <p className="text-muted-foreground">{label}</p>
+                          <p className={`font-bold text-sm ${highlight ? "text-teal-700 dark:text-teal-300" : ""}`}>{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {prop.certifiedThisMonth && prop.certifiedAt && (
+                      <p className="text-xs text-muted-foreground">
+                        Last certified: {new Date(prop.certifiedAt).toLocaleString()}
+                      </p>
+                    )}
+                    <div className="flex gap-2 items-center">
+                      <Input
+                        className="h-7 text-xs flex-1"
+                        placeholder="Optional certification notes..."
+                        value={notes[prop.propertyId] || ""}
+                        onChange={(e) => setNotes((n) => ({ ...n, [prop.propertyId]: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => certify(prop)}
+                    disabled={certMutation.isPending}
+                    variant={prop.certifiedThisMonth && !prop.alert ? "outline" : "default"}
+                    className="shrink-0"
+                    size="sm"
+                    data-testid={`certify-${prop.propertyId}`}
+                  >
+                    <CheckCircle2 className="h-4 w-4 mr-1" />
+                    {prop.certifiedThisMonth ? "Re-certify" : "Certify Inventory"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Revenue Opportunity Dashboard ────────────────────────────────────────────
+
+function RevenueOpportunityTab({ filters }: { filters: FilterState }) {
+  const params = new URLSearchParams({ startDate: filters.startDate, endDate: filters.endDate, propertyIds: filters.propertyIds });
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["/api/owner/revenue-opportunity", filters.startDate, filters.endDate, filters.propertyIds],
+    queryFn: () => fetch(`/api/owner/revenue-opportunity?${params}`).then((r) => r.json()),
+    staleTime: 60000,
+  });
+
+  const rows: any[] = data?.rows || [];
+  const summary = data?.summary || {};
+
+  const StatusBadge = ({ status }: { status: string }) => {
+    if (status === "critical") return <Badge className="bg-red-100 text-red-800 text-xs">Critical</Badge>;
+    if (status === "warning") return <Badge className="bg-amber-100 text-amber-800 text-xs">Warning</Badge>;
+    return <Badge className="bg-emerald-100 text-emerald-800 text-xs">Healthy</Badge>;
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Lightbulb className="h-5 w-5 text-orange-500" />
+        <h2 className="font-semibold text-lg">Revenue Opportunity Dashboard</h2>
+      </div>
+
+      {/* Summary KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiCard title="Total Unsold Nights" value={`${(summary.totalUnsoldNights || 0).toLocaleString()}`} sub="Room nights not sold" loading={isLoading} icon={<Bed className="h-4 w-4 text-blue-600" />} color="blue" />
+        <KpiCard title="Revenue Opportunity" value={INR(summary.totalOpportunity)} sub="At current ARR" loading={isLoading} icon={<DollarSign className="h-4 w-4 text-orange-600" />} color="orange" />
+        <KpiCard title="Critical Properties" value={`${summary.criticalCount || 0}`} sub="<30% occupancy" loading={isLoading} icon={<AlertTriangle className="h-4 w-4 text-red-600" />} color="red" />
+        <KpiCard title="Period" value={`${summary.days || 0} days`} sub={`${filters.startDate} → ${filters.endDate}`} loading={isLoading} icon={<Calendar className="h-4 w-4 text-muted-foreground" />} color="blue" />
+      </div>
+
+      {/* Property rows */}
+      {isLoading ? (
+        <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Card key={i}><CardContent className="p-4"><Skeleton className="h-20 w-full" /></CardContent></Card>)}</div>
+      ) : rows.length === 0 ? (
+        <Card><CardContent className="p-8 text-center text-muted-foreground">No data in this period.</CardContent></Card>
+      ) : (
+        <div className="space-y-3">
+          {rows.map((r: any) => (
+            <Card key={r.propertyId} className={`border-l-4 ${r.status === "critical" ? "border-l-red-500" : r.status === "warning" ? "border-l-amber-500" : "border-l-emerald-500"}`}>
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold text-sm">{r.propertyName}</h3>
+                      <StatusBadge status={r.status} />
+                    </div>
+                    <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
+                      {[
+                        { label: "Total Rooms", value: r.totalRooms },
+                        { label: "Available Nights", value: r.availableNights },
+                        { label: "Occupied", value: r.occupiedNights },
+                        { label: "Unsold", value: r.unsoldNights, highlight: true },
+                        { label: "ARR", value: INR(r.arr) },
+                        { label: "Opportunity", value: INR(r.potentialRevenueLoss), highlight: true },
+                      ].map(({ label, value, highlight }) => (
+                        <div key={label} className={`p-2 rounded bg-muted/40 ${highlight ? "bg-orange-50 dark:bg-orange-950" : ""}`}>
+                          <p className="text-muted-foreground">{label}</p>
+                          <p className={`font-bold text-sm ${highlight ? "text-orange-700 dark:text-orange-300" : ""}`}>{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Occupancy bar */}
+                    <div>
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <span className="text-muted-foreground">Occupancy</span>
+                        <span className="font-medium">{r.occupancyPct.toFixed(1)}%</span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${r.status === "critical" ? "bg-red-500" : r.status === "warning" ? "bg-amber-400" : "bg-emerald-500"}`}
+                          style={{ width: `${Math.min(r.occupancyPct, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Chart */}
+      {!isLoading && rows.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Occupancy vs Opportunity (by Property)</CardTitle></CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={rows} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="propertyName" tick={{ fontSize: 10 }} />
+                <YAxis yAxisId="left" orientation="left" tick={{ fontSize: 10 }} tickFormatter={(v) => `${v.toFixed(0)}%`} />
+                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
+                <Tooltip formatter={(v: any, name: string) => name === "occupancyPct" ? `${Number(v).toFixed(1)}%` : INR(Number(v))} />
+                <Legend />
+                <Bar yAxisId="left" dataKey="occupancyPct" name="Occupancy %" fill="#2BB6A8" radius={[4, 4, 0, 0]} />
+                <Bar yAxisId="right" dataKey="potentialRevenueLoss" name="Opportunity ₹" fill="#F2B705" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─── Action Center Tab ────────────────────────────────────────────────────────
+
+function ActionCenterTab({ filters }: { filters: FilterState }) {
+  const params = new URLSearchParams({ startDate: filters.startDate, endDate: filters.endDate, propertyIds: filters.propertyIds });
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["/api/owner/action-center", filters.startDate, filters.endDate, filters.propertyIds],
+    queryFn: () => fetch(`/api/owner/action-center?${params}`).then((r) => r.json()),
+    staleTime: 60000,
+  });
+
+  const actions: any[] = data?.actions || [];
+  const summary = data?.summary || {};
+
+  const PriorityBadge = ({ p }: { p: string }) => {
+    if (p === "critical") return <Badge className="bg-red-100 text-red-800 text-xs font-bold">🔴 Critical</Badge>;
+    if (p === "high") return <Badge className="bg-amber-100 text-amber-800 text-xs font-bold">🟡 High</Badge>;
+    return <Badge className="bg-blue-100 text-blue-800 text-xs font-bold">🔵 Medium</Badge>;
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Zap className="h-5 w-5 text-yellow-500" />
+        <h2 className="font-semibold text-lg">Owner Action Center</h2>
+        <Badge variant="outline" className="text-xs">AI-powered recommendations</Badge>
+      </div>
+
+      {/* Summary */}
+      <div className="grid grid-cols-3 gap-3">
+        <Card className="border-red-200">
+          <CardContent className="p-3 text-center">
+            <p className="text-2xl font-bold text-red-600">{summary.critical || 0}</p>
+            <p className="text-xs text-muted-foreground">Critical Actions</p>
+          </CardContent>
+        </Card>
+        <Card className="border-amber-200">
+          <CardContent className="p-3 text-center">
+            <p className="text-2xl font-bold text-amber-600">{summary.high || 0}</p>
+            <p className="text-xs text-muted-foreground">High Priority</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3 text-center">
+            <p className="text-2xl font-bold">{summary.total || 0}</p>
+            <p className="text-xs text-muted-foreground">Total Actions</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Card key={i}><CardContent className="p-4"><Skeleton className="h-24 w-full" /></CardContent></Card>)}</div>
+      ) : actions.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center space-y-2">
+            <CheckCircle2 className="h-10 w-10 text-emerald-500 mx-auto" />
+            <p className="font-semibold text-emerald-700">All good! No critical actions required.</p>
+            <p className="text-sm text-muted-foreground">Try a wider date range or check back tomorrow.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {actions.map((a: any, i: number) => (
+            <Card key={i} className={`border-l-4 ${a.priority === "critical" ? "border-l-red-500" : a.priority === "high" ? "border-l-amber-500" : "border-l-blue-400"}`}>
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <PriorityBadge p={a.priority} />
+                    <span className="text-xs text-muted-foreground">{a.property}</span>
+                  </div>
+                  <Badge variant="outline" className="text-xs text-emerald-700 border-emerald-300">
+                    Expected gain: {a.expectedGain}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">{a.issue}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{a.impact}</p>
+                </div>
+                <div className="p-2 rounded bg-blue-50 dark:bg-blue-950 border border-blue-100 dark:border-blue-900">
+                  <p className="text-xs font-medium text-blue-800 dark:text-blue-200 flex items-start gap-1">
+                    <Lightbulb className="h-3 w-3 mt-0.5 shrink-0" />
+                    {a.suggestedAction}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function OwnerDashboard() {
@@ -1299,6 +1997,9 @@ export default function OwnerDashboard() {
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="flex-wrap h-auto gap-1 p-1">
+          <TabsTrigger value="ceo" className="text-xs" data-testid="tab-ceo">
+            🏠 CEO Summary
+          </TabsTrigger>
           <TabsTrigger value="executive" className="text-xs" data-testid="tab-executive">
             Executive
           </TabsTrigger>
@@ -1311,6 +2012,9 @@ export default function OwnerDashboard() {
           <TabsTrigger value="ota" className="text-xs" data-testid="tab-ota">
             OTA vs Walk-in
           </TabsTrigger>
+          <TabsTrigger value="otaplus" className="text-xs" data-testid="tab-otaplus">
+            OTA + Commission
+          </TabsTrigger>
           <TabsTrigger value="leakage" className="text-xs" data-testid="tab-leakage">
             Revenue Leakage
           </TabsTrigger>
@@ -1320,15 +2024,33 @@ export default function OwnerDashboard() {
           <TabsTrigger value="forecast" className="text-xs" data-testid="tab-forecast">
             Forecast Calculator
           </TabsTrigger>
+          <TabsTrigger value="targets" className="text-xs" data-testid="tab-targets">
+            🎯 Targets
+          </TabsTrigger>
+          <TabsTrigger value="rooms" className="text-xs" data-testid="tab-rooms">
+            🏨 Room Cert.
+          </TabsTrigger>
+          <TabsTrigger value="opportunity" className="text-xs" data-testid="tab-opportunity">
+            💡 Opportunity
+          </TabsTrigger>
+          <TabsTrigger value="actions" className="text-xs" data-testid="tab-actions">
+            ⚡ Action Center
+          </TabsTrigger>
         </TabsList>
 
+        <TabsContent value="ceo"><CeoSummaryDashboard filters={filters} /></TabsContent>
         <TabsContent value="executive"><ExecutiveDashboard filters={filters} /></TabsContent>
         <TabsContent value="scorecard"><PropertyScorecard filters={filters} /></TabsContent>
         <TabsContent value="monthly"><MonthlySalesDashboard filters={filters} /></TabsContent>
         <TabsContent value="ota"><OtaAnalyticsDashboard filters={filters} /></TabsContent>
+        <TabsContent value="otaplus"><OtaPlusCommissionTab filters={filters} /></TabsContent>
         <TabsContent value="leakage"><RevenueLeakageDashboard filters={filters} /></TabsContent>
         <TabsContent value="snapshot"><DailySnapshot filters={filters} /></TabsContent>
         <TabsContent value="forecast"><ForecastCalculator filters={filters} /></TabsContent>
+        <TabsContent value="targets"><PropertyTargetsTab filters={filters} /></TabsContent>
+        <TabsContent value="rooms"><RoomCertificationTab filters={filters} /></TabsContent>
+        <TabsContent value="opportunity"><RevenueOpportunityTab filters={filters} /></TabsContent>
+        <TabsContent value="actions"><ActionCenterTab filters={filters} /></TabsContent>
       </Tabs>
     </div>
   );

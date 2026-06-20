@@ -2197,3 +2197,52 @@ export const pricingHistory = pgTable("pricing_history", {
 
 export type PricingHistory = typeof pricingHistory.$inferSelect;
 export type InsertPricingHistory = typeof pricingHistory.$inferInsert;
+
+// ─────────────────────────────────────────────────────────────────
+// Phase 1.1 — Owner BI Enhancement Tables
+// ─────────────────────────────────────────────────────────────────
+
+export const propertyTargets = pgTable("property_targets", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  month: integer("month").notNull(),
+  year: integer("year").notNull(),
+  revenueTarget: decimal("revenue_target", { precision: 12, scale: 2 }).notNull().default("0"),
+  occupancyTarget: decimal("occupancy_target", { precision: 5, scale: 2 }).notNull().default("0"),
+  arrTarget: decimal("arr_target", { precision: 10, scale: 2 }).notNull().default("0"),
+  foodRevenueTarget: decimal("food_revenue_target", { precision: 12, scale: 2 }).notNull().default("0"),
+  createdBy: varchar("created_by", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertPropertyTargetSchema = createInsertSchema(propertyTargets).omit({ id: true, createdAt: true, updatedAt: true });
+export type PropertyTarget = typeof propertyTargets.$inferSelect;
+export type InsertPropertyTarget = z.infer<typeof insertPropertyTargetSchema>;
+
+export const otaCommissionRules = pgTable("ota_commission_rules", {
+  id: serial("id").primaryKey(),
+  sourceName: varchar("source_name", { length: 100 }).notNull().unique(),
+  commissionPct: decimal("commission_pct", { precision: 5, scale: 2 }).notNull().default("0"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertOtaCommissionRuleSchema = createInsertSchema(otaCommissionRules).omit({ id: true, createdAt: true, updatedAt: true });
+export type OtaCommissionRule = typeof otaCommissionRules.$inferSelect;
+export type InsertOtaCommissionRule = z.infer<typeof insertOtaCommissionRuleSchema>;
+
+export const propertyInventoryCertifications = pgTable("property_inventory_certifications", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  month: integer("month").notNull(),
+  year: integer("year").notNull(),
+  activeRooms: integer("active_rooms").notNull().default(0),
+  outOfOrderRooms: integer("out_of_order_rooms").notNull().default(0),
+  saleableRooms: integer("saleable_rooms").notNull().default(0),
+  certifiedBy: varchar("certified_by", { length: 255 }),
+  certifiedAt: timestamp("certified_at").defaultNow(),
+  notes: text("notes"),
+});
+export const insertPropertyInventoryCertificationSchema = createInsertSchema(propertyInventoryCertifications).omit({ id: true, certifiedAt: true });
+export type PropertyInventoryCertification = typeof propertyInventoryCertifications.$inferSelect;
+export type InsertPropertyInventoryCertification = z.infer<typeof insertPropertyInventoryCertificationSchema>;

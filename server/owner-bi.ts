@@ -15,8 +15,11 @@ import {
   propertyExpenses,
   staffSalaries,
   guests,
+  propertyTargets,
+  otaCommissionRules,
+  propertyInventoryCertifications,
 } from "@shared/schema";
-import { eq, and, gte, lte, sql, inArray, isNull, isNotNull, ne, or } from "drizzle-orm";
+import { eq, and, gte, lte, sql, inArray, isNull, isNotNull, ne, or, desc } from "drizzle-orm";
 
 // ─────────────────────────────────────────────
 // Types
@@ -1366,4 +1369,589 @@ export async function getOwnerInsights(filters: OwnerBIFilters) {
   }
 
   return { insights };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 1.1 — NEW FUNCTIONS (DO NOT MODIFY PHASE 1 ABOVE)
+// ═══════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────
+// FEATURE 1: Property Targets
+// ─────────────────────────────────────────────
+
+export async function getTargetsWithActuals(filters: OwnerBIFilters, month: number, year: number) {
+  const propsWithRooms = await getPropertiesWithRooms(filters.propertyIds);
+  const days = daysBetween(filters.startDate, filters.endDate);
+
+  // Fetch targets for the given month/year
+  const targetConds: any[] = [
+    eq(propertyTargets.month, month),
+    eq(propertyTargets.year, year),
+  ];
+  if (filters.propertyIds?.length) targetConds.push(inArray(propertyTargets.propertyId, filters.propertyIds));
+  const targets = await db.select().from(propertyTargets).where(and(...targetConds));
+  const targetMap = new Map(targets.map((t) => [t.propertyId, t]));
+
+  // Actuals using same methodology as Phase 1 validated calculations
+  const [billRows, foodRows] = await Promise.all([
+    getBillsInRange(filters),
+    getFoodOrdersInRange(filters),
+  ]);
+
+  // Aggregate actuals by property
+  const byProp: Record<number, { roomRevenue: number; foodRevenue: number; occupiedNights: number; billFood: number }> = {};
+  const seenBids = new Set<number>();
+  for (const r of billRows) {
+    if (!byProp[r.propertyId]) byProp[r.propertyId] = { roomRevenue: 0, foodRevenue: 0, occupiedNights: 0, billFood: 0 };
+    if (!seenBids.has(r.bookingId)) {
+      seenBids.add(r.bookingId);
+      byProp[r.propertyId].roomRevenue += num(r.roomCharges);
+      byProp[r.propertyId].billFood += num(r.foodCharges);
+      byProp[r.propertyId].occupiedNights += occupiedNightsForBooking(r.checkInDate, r.checkOutDate, filters.startDate, filters.endDate);
+    }
+  }
+  for (const o of foodRows) {
+    if (!o.propertyId) continue;
+    if (!byProp[o.propertyId]) byProp[o.propertyId] = { roomRevenue: 0, foodRevenue: 0, occupiedNights: 0, billFood: 0 };
+    byProp[o.propertyId].foodRevenue += num(o.totalAmount);
+  }
+
+  const result = propsWithRooms.map((prop) => {
+    const t = targetMap.get(prop.id);
+    const a = byProp[prop.id] || { roomRevenue: 0, foodRevenue: 0, occupiedNights: 0, billFood: 0 };
+    const totalAvail = prop.roomCount * days;
+    const actualRevenue = a.roomRevenue + a.foodRevenue + a.billFood;
+    const actualOccupancy = totalAvail > 0 ? (a.occupiedNights / totalAvail) * 100 : 0;
+    const actualArr = a.occupiedNights > 0 ? a.roomRevenue / a.occupiedNights : 0;
+    const actualFood = a.foodRevenue + a.billFood;
+
+    const revTarget = num(t?.revenueTarget);
+    const occTarget = num(t?.occupancyTarget);
+    const arrTarget = num(t?.arrTarget);
+    const foodTarget = num(t?.foodRevenueTarget);
+
+    const pct = (actual: number, target: number) =>
+      target > 0 ? Math.round((actual / target) * 100) : null;
+
+    return {
+      propertyId: prop.id,
+      propertyName: prop.name,
+      targets: { revenue: revTarget, occupancy: occTarget, arr: arrTarget, food: foodTarget, id: t?.id },
+      actuals: { revenue: actualRevenue, occupancy: actualOccupancy, arr: actualArr, food: actualFood },
+      achievement: {
+        revenue: pct(actualRevenue, revTarget),
+        occupancy: pct(actualOccupancy, occTarget),
+        arr: pct(actualArr, arrTarget),
+        food: pct(actualFood, foodTarget),
+      },
+    };
+  });
+
+  return { month, year, properties: result };
+}
+
+export async function upsertTarget(data: {
+  propertyId: number; month: number; year: number;
+  revenueTarget: number; occupancyTarget: number; arrTarget: number; foodRevenueTarget: number;
+  createdBy?: string;
+}) {
+  const existing = await db.select({ id: propertyTargets.id })
+    .from(propertyTargets)
+    .where(and(
+      eq(propertyTargets.propertyId, data.propertyId),
+      eq(propertyTargets.month, data.month),
+      eq(propertyTargets.year, data.year),
+    )).limit(1);
+
+  if (existing.length > 0) {
+    const [updated] = await db.update(propertyTargets)
+      .set({
+        revenueTarget: String(data.revenueTarget),
+        occupancyTarget: String(data.occupancyTarget),
+        arrTarget: String(data.arrTarget),
+        foodRevenueTarget: String(data.foodRevenueTarget),
+        updatedAt: new Date(),
+      })
+      .where(eq(propertyTargets.id, existing[0].id))
+      .returning();
+    return updated;
+  } else {
+    const [created] = await db.insert(propertyTargets).values({
+      propertyId: data.propertyId,
+      month: data.month,
+      year: data.year,
+      revenueTarget: String(data.revenueTarget),
+      occupancyTarget: String(data.occupancyTarget),
+      arrTarget: String(data.arrTarget),
+      foodRevenueTarget: String(data.foodRevenueTarget),
+      createdBy: data.createdBy,
+    }).returning();
+    return created;
+  }
+}
+
+// ─────────────────────────────────────────────
+// FEATURE 2: OTA Commission Rules
+// ─────────────────────────────────────────────
+
+export async function getOtaCommissionRules() {
+  return db.select().from(otaCommissionRules).orderBy(otaCommissionRules.sourceName);
+}
+
+export async function upsertOtaCommissionRule(data: {
+  sourceName: string; commissionPct: number; active?: boolean;
+}) {
+  const existing = await db.select({ id: otaCommissionRules.id })
+    .from(otaCommissionRules)
+    .where(eq(otaCommissionRules.sourceName, data.sourceName.toLowerCase().trim()))
+    .limit(1);
+
+  if (existing.length > 0) {
+    const [updated] = await db.update(otaCommissionRules)
+      .set({ commissionPct: String(data.commissionPct), active: data.active ?? true, updatedAt: new Date() })
+      .where(eq(otaCommissionRules.id, existing[0].id))
+      .returning();
+    return updated;
+  } else {
+    const [created] = await db.insert(otaCommissionRules).values({
+      sourceName: data.sourceName.toLowerCase().trim(),
+      commissionPct: String(data.commissionPct),
+      active: data.active ?? true,
+    }).returning();
+    return created;
+  }
+}
+
+export async function seedDefaultOtaCommissions() {
+  const defaults = [
+    { sourceName: "booking.com", commissionPct: 18 },
+    { sourceName: "makemytrip", commissionPct: 18 },
+    { sourceName: "goibibo", commissionPct: 18 },
+    { sourceName: "agoda", commissionPct: 20 },
+    { sourceName: "airbnb", commissionPct: 15 },
+    { sourceName: "hostelworld", commissionPct: 15 },
+  ];
+  for (const d of defaults) {
+    const exists = await db.select({ id: otaCommissionRules.id })
+      .from(otaCommissionRules)
+      .where(eq(otaCommissionRules.sourceName, d.sourceName))
+      .limit(1);
+    if (exists.length === 0) {
+      await db.insert(otaCommissionRules).values({
+        sourceName: d.sourceName,
+        commissionPct: String(d.commissionPct),
+        active: true,
+      });
+    }
+  }
+}
+
+export async function getOtaWithCommissions(filters: OwnerBIFilters) {
+  const [billRows, commissions, propsWithRooms] = await Promise.all([
+    getBillsInRange(filters),
+    getOtaCommissionRules(),
+    getPropertiesWithRooms(filters.propertyIds),
+  ]);
+
+  const commMap = new Map(commissions.map((c) => [c.sourceName.toLowerCase(), num(c.commissionPct)]));
+
+  const days = daysBetween(filters.startDate, filters.endDate);
+  const totalAvailNights = propsWithRooms.reduce((s, p) => s + p.roomCount * days, 0);
+
+  // Aggregate by source (OTA only)
+  type SourceData = { bookings: Set<number>; grossRevenue: number; roomRevenue: number; occupiedNights: number; commissionPct: number };
+  const bySource: Record<string, SourceData> = {};
+
+  const seenBids = new Set<number>();
+  for (const r of billRows) {
+    const cat = classifySource(r.source);
+    if (cat !== "ota") continue;
+    const rawSource = (r.source || "ota").toLowerCase().trim();
+
+    // Find best matching commission rule
+    let commPct = 0;
+    for (const [ruleName, pct] of commMap) {
+      if (rawSource.includes(ruleName) || ruleName.includes(rawSource)) {
+        commPct = pct;
+        break;
+      }
+    }
+    // Display name: use the matched rule name or clean up raw
+    const displayKey = rawSource;
+
+    if (!bySource[displayKey]) {
+      bySource[displayKey] = { bookings: new Set(), grossRevenue: 0, roomRevenue: 0, occupiedNights: 0, commissionPct: commPct };
+    }
+    const s = bySource[displayKey];
+    if (!seenBids.has(r.bookingId)) {
+      seenBids.add(r.bookingId);
+      s.bookings.add(r.bookingId);
+      s.grossRevenue += num(r.roomCharges) + num(r.foodCharges) + num(r.extraCharges);
+      s.roomRevenue += num(r.roomCharges);
+      s.occupiedNights += occupiedNightsForBooking(r.checkInDate, r.checkOutDate, filters.startDate, filters.endDate);
+    }
+  }
+
+  const totalOtaRevenue = Object.values(bySource).reduce((s, d) => s + d.grossRevenue, 0);
+
+  const rows = Object.entries(bySource).map(([source, d]) => {
+    const gross = d.grossRevenue;
+    const commAmt = gross * (d.commissionPct / 100);
+    const net = gross - commAmt;
+    const arr = d.occupiedNights > 0 ? d.roomRevenue / d.occupiedNights : 0;
+    const occContrib = totalAvailNights > 0 ? (d.occupiedNights / totalAvailNights) * 100 : 0;
+    return {
+      source,
+      bookings: d.bookings.size,
+      grossRevenue: gross,
+      commissionPct: d.commissionPct,
+      commissionAmount: commAmt,
+      netRevenue: net,
+      revenueShare: totalOtaRevenue > 0 ? (gross / totalOtaRevenue) * 100 : 0,
+      arr,
+      occupancyContribution: occContrib,
+    };
+  }).sort((a, b) => b.grossRevenue - a.grossRevenue);
+
+  const totalCommission = rows.reduce((s, r) => s + r.commissionAmount, 0);
+  const totalNet = rows.reduce((s, r) => s + r.netRevenue, 0);
+  const highestCost = rows.reduce((a, b) => a.commissionAmount > b.commissionAmount ? a : b, rows[0]);
+  const highestProfit = rows.reduce((a, b) => a.netRevenue > b.netRevenue ? a : b, rows[0]);
+
+  return {
+    rows,
+    totals: {
+      otaRevenue: totalOtaRevenue,
+      otaCommission: totalCommission,
+      netOtaRevenue: totalNet,
+      highestCostOta: highestCost?.source || null,
+      highestProfitOta: highestProfit?.source || null,
+    },
+  };
+}
+
+// ─────────────────────────────────────────────
+// FEATURE 3: Room Inventory Certification
+// ─────────────────────────────────────────────
+
+export async function getInventoryStatus(propertyIds?: number[]) {
+  const props = await getPropertiesWithRooms(propertyIds);
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+
+  // Fetch live room counts from DB
+  const roomConds: any[] = [eq(rooms.status, "active")];
+  if (propertyIds?.length) roomConds.push(inArray(rooms.propertyId, propertyIds));
+  const activeRoomsDb = await db.select({
+    propertyId: rooms.propertyId,
+    count: sql<number>`COUNT(*)::int`,
+  }).from(rooms).where(and(...roomConds)).groupBy(rooms.propertyId);
+  const activeMap = new Map(activeRoomsDb.map((r) => [r.propertyId, r.count]));
+
+  const oooRoomsDb = await db.select({
+    propertyId: rooms.propertyId,
+    count: sql<number>`COUNT(*)::int`,
+  }).from(rooms).where(and(
+    eq(rooms.status, "out_of_order"),
+    ...(propertyIds?.length ? [inArray(rooms.propertyId, propertyIds)] : []),
+  )).groupBy(rooms.propertyId);
+  const oooMap = new Map(oooRoomsDb.map((r) => [r.propertyId, r.count]));
+
+  // Fetch latest certification per property
+  const certConds: any[] = [eq(propertyInventoryCertifications.month, month), eq(propertyInventoryCertifications.year, year)];
+  if (propertyIds?.length) certConds.push(inArray(propertyInventoryCertifications.propertyId, propertyIds));
+  const certs = await db.select().from(propertyInventoryCertifications).where(and(...certConds));
+  const certMap = new Map(certs.map((c) => [c.propertyId, c]));
+
+  return props.map((prop) => {
+    const active = activeMap.get(prop.id) || 0;
+    const ooo = oooMap.get(prop.id) || 0;
+    const total = prop.roomCount;
+    const saleable = active - ooo;
+    const cert = certMap.get(prop.id);
+    return {
+      propertyId: prop.id,
+      propertyName: prop.name,
+      configuredRooms: total,
+      activeRooms: active,
+      outOfOrderRooms: ooo,
+      saleableRooms: Math.max(0, saleable),
+      certifiedThisMonth: !!cert,
+      certifiedAt: cert?.certifiedAt || null,
+      certifiedBy: cert?.certifiedBy || null,
+      certSaleableRooms: cert?.saleableRooms || null,
+      notes: cert?.notes || null,
+      alert: cert && cert.saleableRooms !== Math.max(0, saleable)
+        ? `Room count changed since last certification (was ${cert.saleableRooms}, now ${Math.max(0, saleable)})`
+        : null,
+    };
+  });
+}
+
+export async function createCertification(data: {
+  propertyId: number; month: number; year: number;
+  activeRooms: number; outOfOrderRooms: number; saleableRooms: number;
+  certifiedBy?: string; notes?: string;
+}) {
+  // Upsert (one certification per property per month)
+  const existing = await db.select({ id: propertyInventoryCertifications.id })
+    .from(propertyInventoryCertifications)
+    .where(and(
+      eq(propertyInventoryCertifications.propertyId, data.propertyId),
+      eq(propertyInventoryCertifications.month, data.month),
+      eq(propertyInventoryCertifications.year, data.year),
+    )).limit(1);
+
+  if (existing.length > 0) {
+    const [updated] = await db.update(propertyInventoryCertifications)
+      .set({ activeRooms: data.activeRooms, outOfOrderRooms: data.outOfOrderRooms, saleableRooms: data.saleableRooms, certifiedBy: data.certifiedBy, certifiedAt: new Date(), notes: data.notes })
+      .where(eq(propertyInventoryCertifications.id, existing[0].id))
+      .returning();
+    return updated;
+  } else {
+    const [created] = await db.insert(propertyInventoryCertifications).values({ ...data, certifiedAt: new Date() }).returning();
+    return created;
+  }
+}
+
+// ─────────────────────────────────────────────
+// FEATURE 4: Revenue Opportunity Dashboard
+// ─────────────────────────────────────────────
+
+export async function getRevenueOpportunity(filters: OwnerBIFilters) {
+  const [billRows, propsWithRooms] = await Promise.all([
+    getBillsInRange(filters),
+    getPropertiesWithRooms(filters.propertyIds),
+  ]);
+
+  const days = daysBetween(filters.startDate, filters.endDate);
+
+  const byProp: Record<number, { roomRevenue: number; occupiedNights: number; seenBids: Set<number> }> = {};
+  for (const r of billRows) {
+    if (!byProp[r.propertyId]) byProp[r.propertyId] = { roomRevenue: 0, occupiedNights: 0, seenBids: new Set() };
+    if (!byProp[r.propertyId].seenBids.has(r.bookingId)) {
+      byProp[r.propertyId].seenBids.add(r.bookingId);
+      byProp[r.propertyId].roomRevenue += num(r.roomCharges);
+      byProp[r.propertyId].occupiedNights += occupiedNightsForBooking(r.checkInDate, r.checkOutDate, filters.startDate, filters.endDate);
+    }
+  }
+
+  const rows = propsWithRooms.map((prop) => {
+    const d = byProp[prop.id] || { roomRevenue: 0, occupiedNights: 0 };
+    const availNights = prop.roomCount * days;
+    const occupiedNights = d.occupiedNights;
+    const unsoldNights = Math.max(0, availNights - occupiedNights);
+    const arr = occupiedNights > 0 ? d.roomRevenue / occupiedNights : 0;
+    const occupancyPct = availNights > 0 ? (occupiedNights / availNights) * 100 : 0;
+    const potentialLoss = unsoldNights * arr;
+    const status = occupancyPct < 30 ? "critical" : occupancyPct < 50 ? "warning" : "healthy";
+    return {
+      propertyId: prop.id,
+      propertyName: prop.name,
+      totalRooms: prop.roomCount,
+      availableNights: availNights,
+      occupiedNights,
+      unsoldNights,
+      arr,
+      occupancyPct,
+      potentialRevenueLoss: potentialLoss,
+      status,
+    };
+  }).sort((a, b) => b.potentialRevenueLoss - a.potentialRevenueLoss);
+
+  const totalUnsold = rows.reduce((s, r) => s + r.unsoldNights, 0);
+  const totalOpportunity = rows.reduce((s, r) => s + r.potentialRevenueLoss, 0);
+  const criticalCount = rows.filter((r) => r.status === "critical").length;
+
+  return { rows, summary: { totalUnsoldNights: totalUnsold, totalOpportunity, criticalCount, days } };
+}
+
+// ─────────────────────────────────────────────
+// FEATURE 5: Owner Action Center
+// ─────────────────────────────────────────────
+
+export async function getActionCenter(filters: OwnerBIFilters) {
+  const [dashboard, opportunity, leakage, targets] = await Promise.all([
+    getOwnerDashboard(filters),
+    getRevenueOpportunity(filters),
+    getRevenueLeakage(filters),
+    (async () => {
+      const now = new Date();
+      return getTargetsWithActuals(filters, now.getMonth() + 1, now.getFullYear());
+    })(),
+  ]);
+
+  const actions: Array<{
+    property: string; propertyId: number; issue: string; impact: string;
+    suggestedAction: string; expectedGain: string; priority: "critical" | "high" | "medium";
+  }> = [];
+
+  const INR = (v: number) => `₹${v >= 100000 ? (v / 100000).toFixed(1) + "L" : v >= 1000 ? (v / 1000).toFixed(0) + "K" : v.toFixed(0)}`;
+
+  // Low occupancy alerts
+  for (const r of opportunity.rows) {
+    if (r.status === "critical") {
+      actions.push({
+        property: r.propertyName, propertyId: r.propertyId,
+        issue: `${r.propertyName} occupancy is critically low at ${r.occupancyPct.toFixed(1)}%`,
+        impact: `${r.unsoldNights} unsold room nights — ${INR(r.potentialRevenueLoss)} revenue opportunity`,
+        suggestedAction: "Run weekend promotions, contact travel agents, offer early-bird discounts",
+        expectedGain: INR(r.potentialRevenueLoss * 0.3),
+        priority: "critical",
+      });
+    } else if (r.status === "warning") {
+      actions.push({
+        property: r.propertyName, propertyId: r.propertyId,
+        issue: `${r.propertyName} occupancy at ${r.occupancyPct.toFixed(1)}% — below 50% threshold`,
+        impact: `${r.unsoldNights} unsold nights — ${INR(r.potentialRevenueLoss)} at risk`,
+        suggestedAction: "Push OTA availability, run dynamic pricing, target corporate clients",
+        expectedGain: INR(r.potentialRevenueLoss * 0.25),
+        priority: "high",
+      });
+    }
+  }
+
+  // Target misses
+  for (const p of targets.properties) {
+    const revAch = p.achievement.revenue;
+    if (revAch !== null && revAch < 80) {
+      actions.push({
+        property: p.propertyName, propertyId: p.propertyId,
+        issue: `${p.propertyName} revenue at ${revAch}% of target`,
+        impact: `${INR(p.targets.revenue - p.actuals.revenue)} revenue gap this month`,
+        suggestedAction: "Review room rates, upsell services, focus on high-value bookings",
+        expectedGain: INR((p.targets.revenue - p.actuals.revenue) * 0.4),
+        priority: revAch < 60 ? "critical" : "high",
+      });
+    }
+    const foodAch = p.achievement.food;
+    if (foodAch !== null && foodAch < 80 && p.targets.food > 0) {
+      actions.push({
+        property: p.propertyName, propertyId: p.propertyId,
+        issue: `${p.propertyName} food revenue at ${foodAch}% of target`,
+        impact: `${INR(p.targets.food - p.actuals.food)} food revenue gap`,
+        suggestedAction: "Push meal packages, introduce combo offers, train staff on upselling",
+        expectedGain: INR((p.targets.food - p.actuals.food) * 0.35),
+        priority: "medium",
+      });
+    }
+  }
+
+  // Outstanding collections
+  if (leakage.outstanding.total > 10000) {
+    actions.push({
+      property: "All Properties", propertyId: 0,
+      issue: `Outstanding collections of ${INR(leakage.outstanding.total)} pending`,
+      impact: "Cash flow affected — revenue recognized but not collected",
+      suggestedAction: "Follow up with guests, send payment reminders, escalate overdue bills",
+      expectedGain: INR(leakage.outstanding.total * 0.7),
+      priority: "high",
+    });
+  }
+
+  // High OTA dependency
+  const rev = (dashboard as any).revenue;
+  const otaRev = (dashboard as any).sourceBreakdown?.ota?.revenue || 0;
+  const totalRev = rev?.total || 0;
+  const otaPct = totalRev > 0 ? (otaRev / totalRev) * 100 : 0;
+  if (otaPct > 75) {
+    actions.push({
+      property: "All Properties", propertyId: 0,
+      issue: `OTA dependency is ${otaPct.toFixed(1)}% — above 75% threshold`,
+      impact: "High commission costs reducing net revenue",
+      suggestedAction: "Invest in direct booking website, offer loyalty discounts for repeat guests",
+      expectedGain: INR(otaRev * 0.05),
+      priority: "medium",
+    });
+  }
+
+  // Sort: critical first
+  actions.sort((a, b) => {
+    const order = { critical: 0, high: 1, medium: 2 };
+    return order[a.priority] - order[b.priority];
+  });
+
+  return { actions, summary: { total: actions.length, critical: actions.filter((a) => a.priority === "critical").length, high: actions.filter((a) => a.priority === "high").length } };
+}
+
+// ─────────────────────────────────────────────
+// FEATURE 6: CEO Homepage Summary
+// ─────────────────────────────────────────────
+
+export async function getCeoSummary(filters: OwnerBIFilters) {
+  const now = new Date();
+  const todayStr = now.toISOString().split("T")[0];
+  const ydayStr = new Date(now.getTime() - 86400000).toISOString().split("T")[0];
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+
+  const propIds = filters.propertyIds;
+
+  // Today's revenue from bills
+  const [todayBills, yesterdayBills, monthBills, outstandingBills, monthTargets, snapshotData, opportunityData] =
+    await Promise.all([
+      getBillsInRange({ startDate: todayStr, endDate: todayStr, propertyIds: propIds }),
+      getBillsInRange({ startDate: ydayStr, endDate: ydayStr, propertyIds: propIds }),
+      getBillsInRange({ startDate: monthStart, endDate: todayStr, propertyIds: propIds }),
+      getOutstandingBills(propIds),
+      (async () => {
+        const t = await db.select().from(propertyTargets).where(and(
+          eq(propertyTargets.month, now.getMonth() + 1),
+          eq(propertyTargets.year, now.getFullYear()),
+          ...(propIds?.length ? [inArray(propertyTargets.propertyId, propIds)] : []),
+        ));
+        return t.reduce((s, r) => s + num(r.revenueTarget), 0);
+      })(),
+      getDailySnapshot(propIds),
+      getRevenueOpportunity({ startDate: monthStart, endDate: todayStr, propertyIds: propIds }),
+    ]);
+
+  const calcRev = (rows: typeof todayBills) => {
+    const seen = new Set<number>();
+    return rows.reduce((s, r) => {
+      if (seen.has(r.bookingId)) return s;
+      seen.add(r.bookingId);
+      return s + num(r.roomCharges) + num(r.foodCharges) + num(r.extraCharges);
+    }, 0);
+  };
+
+  const todayRev = calcRev(todayBills);
+  const ydayRev = calcRev(yesterdayBills);
+  const monthRev = calcRev(monthBills);
+  const outstanding = outstandingBills.reduce((s, r) => s + (num(r.balanceAmount) || num(r.billTotal)), 0);
+  const targetAch = monthTargets > 0 ? Math.round((monthRev / monthTargets) * 100) : null;
+
+  // Occupancy (month to date)
+  const propsWithRooms = await getPropertiesWithRooms(propIds);
+  const daysMtd = daysBetween(monthStart, todayStr);
+  const totalAvail = propsWithRooms.reduce((s, p) => s + p.roomCount * daysMtd, 0);
+  const seenBids = new Set<number>();
+  let occupiedNights = 0;
+  let roomRevMonth = 0;
+  for (const r of monthBills) {
+    if (seenBids.has(r.bookingId)) continue;
+    seenBids.add(r.bookingId);
+    occupiedNights += occupiedNightsForBooking(r.checkInDate, r.checkOutDate, monthStart, todayStr);
+    roomRevMonth += num(r.roomCharges);
+  }
+  const occupancy = totalAvail > 0 ? (occupiedNights / totalAvail) * 100 : 0;
+  const arr = occupiedNights > 0 ? roomRevMonth / occupiedNights : 0;
+  const revpar = totalAvail > 0 ? roomRevMonth / totalAvail : 0;
+
+  const leakage = (snapshotData as any).pendingBillsAmount || 0;
+  const opportunity = opportunityData.summary.totalOpportunity;
+
+  return {
+    today: todayRev,
+    yesterday: ydayRev,
+    monthToDate: monthRev,
+    monthTarget: monthTargets,
+    targetAchievement: targetAch,
+    occupancy,
+    arr,
+    revpar,
+    outstanding,
+    leakage,
+    opportunity,
+  };
 }

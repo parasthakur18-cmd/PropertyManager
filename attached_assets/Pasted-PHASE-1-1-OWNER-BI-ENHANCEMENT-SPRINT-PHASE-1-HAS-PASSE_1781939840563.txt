@@ -1,0 +1,473 @@
+PHASE 1.1 – OWNER BI ENHANCEMENT SPRINT
+
+PHASE 1 HAS PASSED VALIDATION.
+
+DO NOT MODIFY ANY EXISTING PHASE 1 CALCULATIONS.
+
+DO NOT TOUCH ANY EXISTING REPORTS.
+
+Build all new functionality as enhancements to the Owner BI module.
+
+====================================================
+OBJECTIVE
+=========
+
+Convert Owner BI from a reporting dashboard into a true owner operating system.
+
+Current Phase 1 shows:
+
+* Revenue
+* Occupancy
+* ARR
+* RevPAR
+* OTA vs Walk-in
+* Revenue Leakage
+* Forecasting
+
+Phase 1.1 will add:
+
+1. Revenue Targets
+2. OTA Commission Tracking
+3. Room Inventory Certification
+4. Revenue Opportunity Dashboard
+5. Owner Action Center
+
+====================================================
+FEATURE 1
+PROPERTY TARGET MANAGEMENT
+==========================
+
+Create new database table.
+
+property_targets
+
+Fields
+
+id
+
+property_id
+
+month
+
+year
+
+revenue_target
+
+occupancy_target
+
+arr_target
+
+food_revenue_target
+
+created_by
+
+created_at
+
+updated_at
+
+====================================================
+TARGET DASHBOARD
+================
+
+For every property show:
+
+Property
+
+Revenue Target
+
+Actual Revenue
+
+Revenue Achievement %
+
+Occupancy Target
+
+Actual Occupancy
+
+Occupancy Achievement %
+
+ARR Target
+
+Actual ARR
+
+ARR Achievement %
+
+Food Revenue Target
+
+Actual Food Revenue
+
+Food Achievement %
+
+====================================================
+TARGET STATUS
+=============
+
+Achievement >100%
+
+Green
+
+Achievement 80%-99%
+
+Yellow
+
+Achievement <80%
+
+Red
+
+====================================================
+FEATURE 2
+OTA COMMISSION TRACKING
+=======================
+
+Create new table.
+
+ota_commission_rules
+
+Fields
+
+id
+
+source_name
+
+commission_pct
+
+active
+
+created_at
+
+updated_at
+
+====================================================
+DEFAULT RULES
+=============
+
+Booking.com
+
+18%
+
+MakeMyTrip
+
+18%
+
+Goibibo
+
+18%
+
+Agoda
+
+20%
+
+Airbnb
+
+15%
+
+Hostelworld
+
+15%
+
+====================================================
+OTA ANALYTICS ENHANCEMENT
+=========================
+
+For every OTA show:
+
+Source
+
+Bookings
+
+Gross Revenue
+
+Commission %
+
+Commission Amount
+
+Net Revenue
+
+Revenue Share %
+
+ARR
+
+Occupancy Contribution %
+
+====================================================
+FORMULAS
+========
+
+Commission Amount
+
+Gross Revenue × Commission %
+
+Net Revenue
+
+Gross Revenue − Commission Amount
+
+====================================================
+NEW KPI CARDS
+=============
+
+Total OTA Revenue
+
+Total OTA Commission
+
+Net OTA Revenue
+
+Highest Cost OTA
+
+Highest Profit OTA
+
+====================================================
+FEATURE 3
+ROOM INVENTORY CERTIFICATION
+============================
+
+Create Room Inventory Audit Screen.
+
+Purpose:
+
+Ensure occupancy, RevPAR and forecasting always use correct room counts.
+
+====================================================
+PROPERTY INVENTORY VIEW
+=======================
+
+Property
+
+Configured Rooms
+
+Active Rooms
+
+Out Of Order Rooms
+
+Saleable Rooms
+
+Dorm Beds
+
+Dorm Capacity
+
+Last Certified Date
+
+Certified By
+
+====================================================
+MONTHLY CERTIFICATION
+=====================
+
+Owner must certify room inventory monthly.
+
+Store:
+
+property_inventory_certifications
+
+property_id
+
+month
+
+year
+
+active_rooms
+
+out_of_order_rooms
+
+saleable_rooms
+
+certified_by
+
+certified_at
+
+====================================================
+ALERTS
+======
+
+Alert if:
+
+Room count changes
+
+Room goes out of order
+
+Saleable rooms decrease
+
+====================================================
+FEATURE 4
+REVENUE OPPORTUNITY DASHBOARD
+=============================
+
+MOST IMPORTANT OWNER FEATURE
+
+Show lost revenue opportunities.
+
+====================================================
+VACANCY LOSS
+============
+
+Property
+
+Available Room Nights
+
+Occupied Room Nights
+
+Unsold Room Nights
+
+ARR
+
+Potential Revenue Lost
+
+Formula
+
+Unsold Room Nights × ARR
+
+====================================================
+LOW OCCUPANCY ALERTS
+====================
+
+Occupancy <30%
+
+Critical
+
+Occupancy 30%-50%
+
+Warning
+
+Occupancy >50%
+
+Healthy
+
+====================================================
+OPPORTUNITY RANKING
+===================
+
+Rank properties by:
+
+Potential Revenue Recoverable
+
+Highest Vacancy Loss
+
+Highest Revenue Opportunity
+
+====================================================
+FEATURE 5
+OWNER ACTION CENTER
+===================
+
+Create automatic action list.
+
+Examples:
+
+Blue Mont occupancy below target.
+
+Woodpecker food revenue below target.
+
+Forest Pinnacle OTA dependency above 75%.
+
+TreeHouse ARR highest but occupancy low.
+
+Yolo revenue down compared to last month.
+
+====================================================
+SMART INSIGHTS
+==============
+
+Generate:
+
+Issue
+
+Impact
+
+Suggested Action
+
+Expected Gain
+
+Example:
+
+Issue:
+Woodpecker has 120 unsold room nights.
+
+Impact:
+₹4.2 lakh revenue opportunity lost.
+
+Suggested Action:
+Run weekday promotions.
+
+Expected Gain:
+₹1.2 lakh additional revenue.
+
+====================================================
+FEATURE 6
+OWNER HOMEPAGE SUMMARY
+======================
+
+Create a one-screen CEO dashboard.
+
+Cards:
+
+Today's Revenue
+
+Yesterday Revenue
+
+Month Revenue
+
+Month Target
+
+Target Achievement %
+
+Occupancy
+
+ARR
+
+RevPAR
+
+Outstanding Amount
+
+Revenue Leakage
+
+Potential Revenue Opportunity
+
+====================================================
+NEW APIS
+========
+
+GET /api/owner/targets
+
+POST /api/owner/targets
+
+PUT /api/owner/targets
+
+GET /api/owner/ota-commissions
+
+POST /api/owner/ota-commissions
+
+GET /api/owner/inventory-certification
+
+POST /api/owner/inventory-certification
+
+GET /api/owner/revenue-opportunity
+
+GET /api/owner/action-center
+
+====================================================
+VALIDATION REQUIRED
+===================
+
+Before release:
+
+1. Verify target calculations.
+2. Verify OTA commission calculations.
+3. Verify inventory counts.
+4. Verify vacancy loss calculations.
+5. Verify opportunity calculations.
+6. Verify all existing Phase 1 reports remain unchanged.
+
+====================================================
+SUCCESS CRITERIA
+================
+
+Owner should be able to answer:
+
+1. Which property is missing target?
+2. Which OTA is costing the most?
+3. Which property has highest revenue opportunity?
+4. How much revenue was lost due to vacancy?
+5. Which property requires immediate attention?
+6. What action should be taken today?
+7. What is the forecast month-end revenue?
+8. Which property is most profitable?
+
+Build as Phase 1.1 enhancement without modifying existing validated Phase 1 calculations.
