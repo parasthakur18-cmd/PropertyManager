@@ -1974,7 +1974,12 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
     conditions.push(inArray(bookings.propertyId, filters.propertyIds));
   }
 
-  // Main query — includes travelAgentId + isGroupBooking
+  // Previous period for trend comparison (same duration, shifted back)
+  const durationMs = new Date(filters.endDate + "T23:59:59.999Z").getTime() - new Date(filters.startDate + "T00:00:00.000Z").getTime();
+  const prevEnd   = new Date(start.getTime() - 1);
+  const prevStart = new Date(prevEnd.getTime() - durationMs);
+
+  // Main query — includes travelAgentId + isGroupBooking + guestName
   const rows = await db
     .select({
       bookingId:      bookings.id,
@@ -1982,6 +1987,7 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
       source:         bookings.source,
       isGroupBooking: bookings.isGroupBooking,
       travelAgentId:  bookings.travelAgentId,
+      guestName:      bookings.guestName,
       checkInDate:    bookings.checkInDate,
       checkOutDate:   bookings.checkOutDate,
       roomCharges:    bills.roomCharges,
@@ -1995,6 +2001,7 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
   // Source contribution table
   const sourceMap: Record<string, { bookings: number; revenue: number; roomNights: number }> = {};
   const agentMap:  Record<number, { bookings: number; revenue: number; roomNights: number; lastBookingDate: string | null }> = {};
+  const organizerMap: Record<string, { bookings: number; revenue: number; roomNights: number }> = {};
   let groupCount = 0; let groupRevenue = 0; let groupNights = 0;
   const seenBookings = new Set<number>();
 
@@ -2025,7 +2032,14 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
       }
     }
 
-    if (r.isGroupBooking) { groupCount++; groupRevenue += rev; groupNights += nights; }
+    if (r.isGroupBooking) {
+      groupCount++; groupRevenue += rev; groupNights += nights;
+      const org = r.guestName?.trim() || "Unknown";
+      if (!organizerMap[org]) organizerMap[org] = { bookings: 0, revenue: 0, roomNights: 0 };
+      organizerMap[org].bookings++;
+      organizerMap[org].revenue += rev;
+      organizerMap[org].roomNights += nights;
+    }
   }
 
   const totalRevenue  = Object.values(sourceMap).reduce((s, v) => s + v.revenue, 0);
@@ -2081,8 +2095,57 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 15);
 
-  // Dependency risk: based on top source's share
-  const topSource = sources[0] || null;
+  // ── Previous period trend query ──────────────────────────────────────────────
+  const prevConditions: any[] = [
+    gte(bills.createdAt, prevStart),
+    lte(bills.createdAt, prevEnd),
+    eq(bills.paymentStatus, "paid"),
+  ];
+  if (filters.propertyIds?.length) prevConditions.push(inArray(bookings.propertyId, filters.propertyIds));
+
+  const prevRows = await db
+    .select({
+      bookingId: bookings.id, source: bookings.source,
+      checkInDate: bookings.checkInDate, checkOutDate: bookings.checkOutDate,
+      roomCharges: bills.roomCharges, foodCharges: bills.foodCharges, extraCharges: bills.extraCharges,
+    })
+    .from(bills).innerJoin(bookings, eq(bills.bookingId, bookings.id))
+    .where(and(...prevConditions));
+
+  const prevSourceMap: Record<string, number> = {};
+  const seenPrev = new Set<number>();
+  for (const r of prevRows) {
+    if (seenPrev.has(r.bookingId)) continue;
+    seenPrev.add(r.bookingId);
+    const rev = num(r.roomCharges) + num(r.foodCharges) + num(r.extraCharges);
+    const cat = classifySource(r.source);
+    prevSourceMap[cat] = (prevSourceMap[cat] || 0) + rev;
+  }
+
+  // Attach trend to each source
+  const sourceTrends = sources.map(s => {
+    const prev = prevSourceMap[s.category] || 0;
+    const trendPct = prev > 0 ? ((s.revenue - prev) / prev) * 100 : null;
+    return { ...s, prevRevenue: prev, trendPct };
+  });
+
+  // ── Group organizers ──────────────────────────────────────────────────────
+  const topGroupOrganizers = Object.entries(organizerMap)
+    .map(([name, d]) => ({
+      name,
+      bookings: d.bookings,
+      revenue: d.revenue,
+      roomNights: d.roomNights,
+      shareOfGroupRevenue: groupRevenue > 0 ? (d.revenue / groupRevenue) * 100 : 0,
+    }))
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 5);
+
+  const topOrgShare = topGroupOrganizers[0]?.shareOfGroupRevenue ?? 0;
+  const groupOrgRisk = topOrgShare >= 40 ? "high" : topOrgShare >= 25 ? "moderate" : "healthy";
+
+  // ── Dependency risk: based on top source's share ──────────────────────────
+  const topSource = sourceTrends[0] || null;
   const topShare = topSource?.revenueSharePct ?? 0;
   const dependencyRisk = topShare >= 50 ? "high" : topShare >= 30 ? "moderate" : "healthy";
 
@@ -2092,7 +2155,7 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
   const top3TAShare = taTotalRevenue > 0 ? (top3TARevenue / taTotalRevenue) * 100 : 0;
 
   return {
-    sources,
+    sources: sourceTrends,
     topAgents,
     totals: { revenue: totalRevenue, bookings: totalBookings, roomNights: totalNights },
     groupStats: {
@@ -2102,6 +2165,8 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
       arr: groupNights > 0 ? groupRevenue / groupNights : 0,
       revenueSharePct: totalRevenue > 0 ? (groupRevenue / totalRevenue) * 100 : 0,
     },
+    groupOrganizers: topGroupOrganizers,
+    groupOrgRisk,
     dependencyRisk: {
       level: dependencyRisk,
       topSource: topSource ? { label: topSource.label, share: topSource.revenueSharePct } : null,

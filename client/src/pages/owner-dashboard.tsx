@@ -1418,61 +1418,75 @@ function CeoSummaryDashboard({ filters }: { filters: FilterState }) {
         </Card>
       )}
 
-      {/* Business Intelligence Strip */}
-      {si && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Network className="h-4 w-4 text-primary" />
-            <span className="text-sm font-semibold">Business Intelligence</span>
-            <Badge variant="outline" className="text-xs">Period Snapshot</Badge>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Top Revenue Source */}
-            {si.dependencyRisk?.topSource && (
-              <Card className="border-l-4 border-l-teal-500">
-                <CardContent className="p-3">
-                  <p className="text-xs text-muted-foreground">Top Revenue Source</p>
-                  <p className="text-base font-bold mt-0.5">{si.dependencyRisk.topSource.label}</p>
-                  <p className="text-xs text-muted-foreground">{si.dependencyRisk.topSource.share.toFixed(1)}% of total revenue</p>
-                </CardContent>
-              </Card>
-            )}
-            {/* Channel Risk */}
-            {si.dependencyRisk && (
-              <Card className={`border-l-4 ${si.dependencyRisk.level === "high" ? "border-l-red-500" : si.dependencyRisk.level === "moderate" ? "border-l-amber-500" : "border-l-emerald-500"}`}>
-                <CardContent className="p-3">
-                  <p className="text-xs text-muted-foreground">Channel Dependency Risk</p>
-                  <p className={`text-base font-bold mt-0.5 flex items-center gap-1 ${si.dependencyRisk.level === "high" ? "text-red-600" : si.dependencyRisk.level === "moderate" ? "text-amber-600" : "text-emerald-600"}`}>
-                    {si.dependencyRisk.level === "high" ? "🔴 High Risk" : si.dependencyRisk.level === "moderate" ? "🟡 Moderate" : "🟢 Healthy"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {si.dependencyRisk.level === "high" ? "One channel dominates" : si.dependencyRisk.level === "moderate" ? "Revenue concentrated" : "Well diversified"}
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-            {/* Best Travel Agent */}
-            {si.topAgents?.length > 0 && (
-              <Card className="border-l-4 border-l-violet-500">
-                <CardContent className="p-3">
-                  <p className="text-xs text-muted-foreground">Best Travel Agent</p>
-                  <p className="text-base font-bold mt-0.5 truncate">{si.topAgents[0].name}</p>
-                  <p className="text-xs text-muted-foreground">{INR_compact(si.topAgents[0].revenue)} · {si.topAgents[0].revenueSharePct.toFixed(1)}% share</p>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-          {/* TA concentration warning */}
-          {si.dependencyRisk?.top3TAShare > 70 && (
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
-              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-800 dark:text-amber-200">
-                Top 3 travel agents contribute <strong>{si.dependencyRisk.top3TAShare.toFixed(0)}%</strong> of agent revenue. Consider diversifying your agent network.
-              </p>
+      {/* Executive BI Strip — 6 insight cards */}
+      {si && (() => {
+        const siSources: any[] = si.sources || [];
+        const fastest = [...siSources].filter(s => s.trendPct != null).sort((a, b) => (b.trendPct ?? 0) - (a.trendPct ?? 0))[0] || null;
+        const highestArr = [...siSources].sort((a, b) => b.arr - a.arr)[0] || null;
+        const risk = si.dependencyRisk;
+        const topAgent = si.topAgents?.[0] || null;
+        const topOrg = si.groupOrganizers?.[0] || null;
+
+        const biCards = [
+          {
+            label: "Top Revenue Source",
+            value: risk?.topSource?.label ?? "—",
+            sub: risk?.topSource ? `${risk.topSource.share.toFixed(1)}% of revenue` : "",
+            color: "border-l-teal-500",
+          },
+          {
+            label: "Fastest Growing",
+            value: fastest ? fastest.label : "—",
+            sub: fastest?.trendPct != null ? `↑ ${fastest.trendPct.toFixed(0)}% vs prev period` : "No prior data",
+            color: "border-l-emerald-500",
+          },
+          {
+            label: "Dependency Risk",
+            value: risk ? (risk.level === "high" ? "🔴 High" : risk.level === "moderate" ? "🟡 Moderate" : "🟢 Healthy") : "—",
+            sub: risk?.topSource ? `${risk.topSource.label} dominates at ${risk.topSource.share.toFixed(0)}%` : "",
+            color: risk?.level === "high" ? "border-l-red-500" : risk?.level === "moderate" ? "border-l-amber-500" : "border-l-emerald-500",
+          },
+          {
+            label: "Highest ARR Source",
+            value: highestArr ? highestArr.label : "—",
+            sub: highestArr ? `₹${Math.round(highestArr.arr).toLocaleString("en-IN")} / night` : "",
+            color: "border-l-indigo-500",
+          },
+          {
+            label: "Best Travel Agent",
+            value: topAgent ? topAgent.name : "—",
+            sub: topAgent ? `${INR_compact(topAgent.revenue)} · ${topAgent.revenueSharePct.toFixed(1)}%` : "No TA bookings",
+            color: "border-l-violet-500",
+          },
+          {
+            label: "Best Group Organizer",
+            value: topOrg ? topOrg.name : "—",
+            sub: topOrg ? `${INR_compact(topOrg.revenue)} · ${topOrg.shareOfGroupRevenue.toFixed(0)}% of groups` : "No group bookings",
+            color: "border-l-pink-500",
+          },
+        ];
+
+        return (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Network className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold">Executive Business Intelligence</span>
+              <Badge variant="outline" className="text-xs">Period Snapshot</Badge>
             </div>
-          )}
-        </div>
-      )}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              {biCards.map(c => (
+                <Card key={c.label} className={`border-l-4 ${c.color}`}>
+                  <CardContent className="p-3">
+                    <p className="text-[10px] text-muted-foreground leading-tight">{c.label}</p>
+                    <p className="text-sm font-bold mt-1 leading-tight truncate">{c.value}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{c.sub}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -2153,6 +2167,36 @@ function SourceIntelligenceTab({ filters }: { filters: FilterState }) {
   const topAgents: any[] = data.topAgents || [];
   const totals = data.totals || { revenue: 0, bookings: 0, roomNights: 0 };
   const groupStats = data.groupStats || {};
+  const groupOrganizers: any[] = data.groupOrganizers || [];
+  const groupOrgRisk: string = data.groupOrgRisk || "healthy";
+
+  // Deterministic AI action recommendations
+  const aiActions: { priority: "high" | "medium"; icon: string; action: string; impact: string; reason: string }[] = [];
+  if (data.dependencyRisk?.topSource?.share > 50) {
+    aiActions.push({ priority: "high", icon: "🔴", action: `Diversify away from ${data.dependencyRisk.topSource.label}`, impact: "Reduces single-channel risk", reason: `${data.dependencyRisk.topSource.label} contributes ${data.dependencyRisk.topSource.share.toFixed(0)}% of revenue — too concentrated.` });
+  }
+  const otaSrc = sources.find((s: any) => s.category === "ota");
+  if (otaSrc && otaSrc.revenueSharePct < 15) {
+    aiActions.push({ priority: "high", icon: "🌐", action: "Increase OTA visibility", impact: "Potential 10-20% revenue uplift", reason: `OTA only contributes ${otaSrc.revenueSharePct.toFixed(0)}% of revenue — online channel is underutilised.` });
+  }
+  if (otaSrc?.trendPct != null && otaSrc.trendPct < -10) {
+    aiActions.push({ priority: "high", icon: "📉", action: `OTA revenue fell ${Math.abs(otaSrc.trendPct).toFixed(0)}% — review listings`, impact: "Recover declining OTA channel", reason: "OTA bookings are declining significantly vs. the previous period." });
+  }
+  const directSrc = sources.find((s: any) => s.category === "direct");
+  if (directSrc?.trendPct != null && directSrc.trendPct > 15) {
+    aiActions.push({ priority: "medium", icon: "✅", action: "Double down on direct booking investment", impact: "Reduce OTA commission costs", reason: `Direct bookings are up ${directSrc.trendPct.toFixed(0)}% — momentum is building.` });
+  }
+  const inactiveAgents = topAgents.filter((a: any) => a.daysSinceLastBooking != null && a.daysSinceLastBooking > 45);
+  inactiveAgents.slice(0, 2).forEach((a: any) => {
+    aiActions.push({ priority: "high", icon: "📞", action: `Re-engage ${a.name}`, impact: `Last sent ${a.daysSinceLastBooking}d ago`, reason: `${a.name} has been inactive for ${a.daysSinceLastBooking} days. Follow up to recover bookings.` });
+  });
+  if (groupOrgRisk === "high" && groupOrganizers[0]) {
+    aiActions.push({ priority: "high", icon: "👥", action: `De-risk group dependency on ${groupOrganizers[0].name}`, impact: "Grow alternate group sources", reason: `${groupOrganizers[0].name} accounts for ${groupOrganizers[0].shareOfGroupRevenue.toFixed(0)}% of group revenue.` });
+  }
+  const taSrc = sources.find((s: any) => s.category === "travel_agent");
+  if (taSrc?.trendPct != null && taSrc.trendPct < -10) {
+    aiActions.push({ priority: "high", icon: "🤝", action: "Re-engage travel agent network", impact: "Recover declining TA channel", reason: `Travel agent revenue dropped ${Math.abs(taSrc.trendPct).toFixed(0)}% vs prior period.` });
+  }
 
   const pieData = sources.map(s => ({ name: s.label, value: s.revenue, color: SOURCE_COLORS[s.category] || "#94A3B8" }));
 
@@ -2229,6 +2273,37 @@ function SourceIntelligenceTab({ filters }: { filters: FilterState }) {
                   </div>
                 ))}
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Source Trend Alerts */}
+      {sources.some((s: any) => s.trendPct != null) && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-blue-500" />
+              Source Trend vs Previous Period
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {sources.filter((s: any) => s.trendPct != null).map((s: any) => {
+                const up = s.trendPct >= 0;
+                return (
+                  <div key={s.category} className={`p-3 rounded-lg border ${up ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800" : "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800"}`}>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: SOURCE_COLORS[s.category] || "#94A3B8" }} />
+                      <span className="text-xs font-medium truncate">{s.label}</span>
+                    </div>
+                    <p className={`text-lg font-bold ${up ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}>
+                      {up ? "↑" : "↓"} {Math.abs(s.trendPct).toFixed(0)}%
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">{fmt(s.revenue)} this period</p>
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -2339,6 +2414,108 @@ function SourceIntelligenceTab({ filters }: { filters: FilterState }) {
         </Card>
       </div>
 
+      {/* Revenue Loss Simulation */}
+      {(topAgents.length > 0 || groupOrganizers.length > 0) && (
+        <Card className="border-orange-200 dark:border-orange-900">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2 text-orange-700 dark:text-orange-300">
+              <AlertTriangle className="h-4 w-4" />
+              Revenue Loss Simulation — "What If?"
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {topAgents[0] && (
+                <div className="p-3 rounded-lg bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800">
+                  <p className="text-xs font-semibold text-orange-800 dark:text-orange-200 mb-2">
+                    If <strong>{topAgents[0].name}</strong> stops sending business…
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-lg font-bold text-red-700 dark:text-red-300">{fmt(topAgents[0].revenue)}</p>
+                      <p className="text-[10px] text-muted-foreground">Revenue at risk</p>
+                    </div>
+                    <div>
+                      <p className="text-lg font-bold text-red-700 dark:text-red-300">
+                        {totals.roomNights > 0 ? `−${((topAgents[0].roomNights / totals.roomNights) * 100).toFixed(0)}%` : "—"}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">Room night impact</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {groupOrganizers[0] && (
+                <div className="p-3 rounded-lg bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800">
+                  <p className="text-xs font-semibold text-orange-800 dark:text-orange-200 mb-2">
+                    If <strong>{groupOrganizers[0].name}</strong> stops group bookings…
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-lg font-bold text-red-700 dark:text-red-300">{fmt(groupOrganizers[0].revenue)}</p>
+                      <p className="text-[10px] text-muted-foreground">Group revenue at risk</p>
+                    </div>
+                    <div>
+                      <p className="text-lg font-bold text-red-700 dark:text-red-300">
+                        {totals.roomNights > 0 ? `−${((groupOrganizers[0].roomNights / totals.roomNights) * 100).toFixed(0)}%` : "—"}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">Room night impact</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Group Dependency Risk by Organizer */}
+      {groupOrganizers.length > 0 && (
+        <Card className={`border-l-4 ${groupOrgRisk === "high" ? "border-l-red-500" : groupOrgRisk === "moderate" ? "border-l-amber-500" : "border-l-emerald-500"}`}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Users className="h-4 w-4 text-pink-500" />
+              Group Dependency Risk by Organizer
+              <Badge className={`ml-auto text-xs ${groupOrgRisk === "high" ? "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200" : groupOrgRisk === "moderate" ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200" : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"} border-0`}>
+                {groupOrgRisk === "high" ? "🔴 High" : groupOrgRisk === "moderate" ? "🟡 Moderate" : "🟢 Healthy"}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Organizer</TableHead>
+                  <TableHead className="text-xs text-right">Group Revenue</TableHead>
+                  <TableHead className="text-xs text-right">Nights</TableHead>
+                  <TableHead className="text-xs text-right">Bookings</TableHead>
+                  <TableHead className="text-xs text-right">% of Groups</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {groupOrganizers.map((o: any, i: number) => (
+                  <TableRow key={o.name}>
+                    <TableCell className="text-xs font-medium py-2">
+                      {i === 0 && <span className="mr-1 text-amber-500">★</span>}{o.name}
+                    </TableCell>
+                    <TableCell className="text-xs text-right py-2 font-mono">{fmt(o.revenue)}</TableCell>
+                    <TableCell className="text-xs text-right py-2">{fmtN(o.roomNights)}</TableCell>
+                    <TableCell className="text-xs text-right py-2">{o.bookings}</TableCell>
+                    <TableCell className="text-xs text-right py-2">
+                      <div className="flex items-center justify-end gap-1">
+                        <div className="w-12 h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div className="h-full rounded-full bg-pink-500" style={{ width: `${Math.min(100, o.shareOfGroupRevenue)}%` }} />
+                        </div>
+                        <span className={`${o.shareOfGroupRevenue >= 40 ? "text-red-600 font-semibold" : ""}`}>{o.shareOfGroupRevenue.toFixed(0)}%</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Top Travel Agents */}
       {topAgents.length > 0 && (
         <Card>
@@ -2440,6 +2617,35 @@ function SourceIntelligenceTab({ filters }: { filters: FilterState }) {
                 </div>
               ))}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* AI Action Recommendations */}
+      {aiActions.length > 0 && (
+        <Card className="border-blue-200 dark:border-blue-900">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Lightbulb className="h-4 w-4 text-blue-600" />
+              AI Action Recommendations
+              <Badge variant="outline" className="text-xs ml-1">{aiActions.length} actions</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {aiActions.map((a, i) => (
+              <div key={i} className={`p-3 rounded-lg border-l-4 ${a.priority === "high" ? "border-l-red-500 bg-red-50 dark:bg-red-950/20" : "border-l-blue-400 bg-blue-50 dark:bg-blue-950/20"}`}>
+                <div className="flex items-start justify-between gap-2 flex-wrap">
+                  <p className="text-sm font-semibold flex items-center gap-2">
+                    <span>{a.icon}</span>{a.action}
+                  </p>
+                  <Badge className={`text-[10px] shrink-0 ${a.priority === "high" ? "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200" : "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200"} border-0`}>
+                    {a.priority === "high" ? "High Priority" : "Medium Priority"}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">{a.reason}</p>
+                <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300 mt-1">Expected impact: {a.impact}</p>
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}

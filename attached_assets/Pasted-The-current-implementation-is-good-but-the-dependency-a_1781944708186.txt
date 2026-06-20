@@ -1,0 +1,139 @@
+The current implementation is good, but the dependency analysis should be calculated across ALL booking sources, not only Travel Agents.
+
+Enhancement Required:
+
+Source Dependency Intelligence
+
+Current:
+
+* Top Travel Agent
+* Top 3 Travel Agents concentration
+
+Add:
+
+1. Revenue Dependency by Source
+   Show:
+
+Source | Revenue | Share %
+
+Example:
+
+Travel Agent = 48%
+Group Booking = 22%
+OTA = 14%
+Direct = 9%
+Walk-in = 7%
+
+AI Insight:
+"70% of revenue is generated from Travel Agent + Group bookings. Business has channel concentration risk."
+
+---
+
+2. Group Dependency Risk
+
+If:
+
+Top Group Organizer >40% group revenue
+
+Show:
+
+🔴 High Dependency
+
+Example:
+"Adventure Souls contributed 52% of all group revenue."
+
+---
+
+3. Revenue Loss Simulation
+
+Show:
+
+"If Top Travel Agent Stops Sending Business"
+
+Revenue Impact:
+₹8.2L
+
+Occupancy Impact:
+-14%
+
+"If Top Group Organizer Stops Sending Business"
+
+Revenue Impact:
+₹5.1L
+
+Occupancy Impact:
+-9%
+
+This is highly valuable for owners.
+
+---
+
+4. Source Trend Alert
+
+Examples:
+
+OTA Revenue:
+↑ +18%
+
+Travel Agent Revenue:
+↓ -12%
+
+Walk-in Revenue:
+↑ +9%
+
+Group Revenue:
+↓ -22%
+
+AI should automatically highlight major shifts.
+
+---
+
+5. Executive BI Strip
+
+Replace current cards with:
+
+* Highest Revenue Source
+* Most Profitable Source
+* Fastest Growing Source
+* Highest Dependency Risk
+* Best Travel Agent
+* Best Group Organizer
+
+This gives a complete business overview in one row.
+
+---
+
+6. AI Action Recommendations
+
+Examples:
+
+Travel Agent dependency above 50%
+→ Build OTA and Direct channels.
+
+OTA contribution below 10%
+→ Increase online visibility.
+
+Group bookings declining
+→ Re-engage top organizers.
+
+Inactive travel agent >45 days
+→ Follow-up action.
+
+All recommendations should include:
+
+* Expected Revenue Impact
+* Priority
+* Reason
+
+---
+
+Goal:
+
+The dashboard should not only tell the owner where revenue came from.
+
+It should tell:
+
+* What is driving the business
+* What is risky
+* What is changing
+* What action should be taken next
