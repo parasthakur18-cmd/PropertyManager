@@ -1,0 +1,536 @@
+HOSTEZEE PHASE-1 BUSINESS INTELLIGENCE AUDIT & OWNER DASHBOARD
+
+IMPORTANT:
+Do NOT start coding immediately.
+
+First perform a complete audit of the existing Hostezee database, APIs, reports, tables, calculations and dashboard widgets.
+
+The goal is to identify:
+
+1. What already exists.
+2. What exists but is not visible in reports.
+3. What calculations are incorrect.
+4. What data is missing.
+5. What new reports need to be built.
+
+====================================================
+STEP 1 - COMPLETE DATA AUDIT
+============================
+
+Audit all modules:
+
+* Bookings
+* Calendar
+* Rooms
+* Properties
+* Guests
+* Payments
+* Wallets
+* POS
+* Food Orders
+* Inventory
+* Expenses
+* Salary
+* Lease
+* OTA Integration
+* Aiosell Integration
+* Reports
+* Dashboards
+
+Create a report with:
+
+Metric
+Available (Yes/No)
+Database Table
+Calculation Logic
+Current Report Location
+Missing Dependencies
+
+Example:
+
+Total Revenue
+Room Revenue
+Food Revenue
+Bookings
+Guest Nights
+Occupancy %
+ARR
+ADR
+RevPAR
+OTA Revenue
+Walk-in Revenue
+Outstanding Revenue
+Cancelled Revenue
+No Show Revenue
+Food Orders
+Average Food Bill
+Property Count
+Room Count
+
+====================================================
+STEP 2 - EXECUTIVE OWNER DASHBOARD
+==================================
+
+Create an owner dashboard with global filters.
+
+Filters:
+
+* Today
+* Yesterday
+* Last 7 Days
+* Last 30 Days
+* This Month
+* Last Month
+* This Quarter
+* This Year
+* Financial Year
+* Custom Date Range
+
+Additional Filters:
+
+* Property
+* Room Type
+* Room Number
+* Booking Source
+* OTA
+* Walk-in
+* Corporate
+* Direct
+* Booking Status
+
+====================================================
+TOP KPI CARDS
+=============
+
+Total Revenue
+
+Room Revenue
+
+Food Revenue
+
+Other Revenue
+
+Total Bookings
+
+Checked In
+
+Checked Out
+
+Cancelled
+
+Guest Nights
+
+ARR
+
+Occupancy %
+
+RevPAR
+
+OTA Revenue
+
+Walk-in Revenue
+
+Outstanding Revenue
+
+Cancellation Loss
+
+Expected Revenue
+
+====================================================
+STEP 3 - PROPERTY PERFORMANCE DASHBOARD
+=======================================
+
+Property Wise Summary
+
+Property Name
+
+Total Revenue
+
+Room Revenue
+
+Food Revenue
+
+Other Revenue
+
+Bookings
+
+Guest Nights
+
+Total Rooms
+
+Occupied Room Nights
+
+Occupancy %
+
+ARR
+
+RevPAR
+
+OTA Revenue
+
+Walk-in Revenue
+
+Outstanding Revenue
+
+Cancelled Revenue
+
+Average Stay Length
+
+Repeat Guest %
+
+Property Ranking
+
+Highest Revenue Property
+
+Highest ARR Property
+
+Highest Occupancy Property
+
+Highest Food Revenue Property
+
+Highest Walk-in Revenue Property
+
+====================================================
+STEP 4 - MONTHLY SALES DASHBOARD
+================================
+
+Monthly Revenue Report
+
+Month
+
+Total Revenue
+
+Room Revenue
+
+Food Revenue
+
+OTA Revenue
+
+Walk-in Revenue
+
+Bookings
+
+Guest Nights
+
+ARR
+
+Occupancy %
+
+Month-on-Month Growth %
+
+Year-on-Year Growth %
+
+Charts:
+
+Revenue Trend
+
+Room Revenue Trend
+
+Food Revenue Trend
+
+OTA Trend
+
+Occupancy Trend
+
+ARR Trend
+
+====================================================
+STEP 5 - OTA VS WALK-IN ANALYSIS
+================================
+
+Booking Source Analysis
+
+Source
+
+Bookings
+
+Revenue
+
+Room Nights
+
+ARR
+
+ADR
+
+Average Stay
+
+Revenue Share %
+
+Booking Share %
+
+Commission %
+
+Net Revenue
+
+Examples:
+
+Booking.com
+
+MMT
+
+Goibibo
+
+Agoda
+
+Airbnb
+
+Walk-in
+
+Website
+
+====================================================
+STEP 6 - REVENUE LEAKAGE DASHBOARD
+==================================
+
+MOST IMPORTANT REPORT
+
+Identify money lost or not collected.
+
+1. Cancelled Revenue
+
+Total Cancelled Bookings
+
+Revenue Lost
+
+Property Wise Breakdown
+
+2. No Show Revenue
+
+Expected Revenue
+
+Lost Revenue
+
+3. Outstanding Revenue
+
+Booked Amount
+
+Received Amount
+
+Pending Amount
+
+4. Check-in Done But No Checkout
+
+Audit List
+
+5. Booking Created But Never Checked In
+
+Potential Revenue Lost
+
+6. Unsold Inventory
+
+Vacant Room Nights
+
+Potential Revenue Loss
+
+Formula:
+
+Vacant Room Nights × ARR
+
+====================================================
+STEP 7 - ROOM PERFORMANCE REPORT
+================================
+
+Property Wise Room Analysis
+
+Room Number
+
+Room Type
+
+Bookings
+
+Guest Nights
+
+Revenue
+
+ARR
+
+Occupancy %
+
+RevPAR
+
+Rank:
+
+Highest Revenue Room
+
+Highest Occupancy Room
+
+Highest ARR Room
+
+Lowest Performing Room
+
+====================================================
+STEP 8 - OCCUPANCY ANALYTICS
+============================
+
+Daily Occupancy
+
+Weekly Occupancy
+
+Monthly Occupancy
+
+Yearly Occupancy
+
+Property Wise Occupancy
+
+Room Type Occupancy
+
+Room Occupancy Heatmap
+
+Weekend vs Weekday Occupancy
+
+====================================================
+STEP 9 - FOOD BUSINESS ANALYTICS
+================================
+
+Property Wise
+
+Food Revenue
+
+Food Orders
+
+Average Food Bill
+
+Food Revenue %
+
+Top Selling Items
+
+Top Categories
+
+Food Revenue Trend
+
+Food Revenue Per Guest
+
+====================================================
+STEP 10 - OWNER P&L DASHBOARD
+=============================
+
+Revenue
+
+Room Revenue
+
+Food Revenue
+
+Other Revenue
+
+Expenses
+
+Salary
+
+Inventory
+
+Utilities
+
+Lease
+
+Marketing
+
+OTA Commission
+
+Maintenance
+
+Misc Expenses
+
+Gross Profit
+
+Net Profit
+
+Profit Margin %
+
+Contribution Margin %
+
+Property Wise P&L
+
+Monthly P&L
+
+Yearly P&L
+
+====================================================
+STEP 11 - REVENUE FORECASTING
+=============================
+
+Occupancy Revenue Calculator
+
+Input:
+
+Property
+
+Total Rooms
+
+ARR
+
+Occupancy %
+
+Number Of Days
+
+Output:
+
+Expected Revenue
+
+Examples:
+
+30% Occupancy
+
+40% Occupancy
+
+50% Occupancy
+
+60% Occupancy
+
+70% Occupancy
+
+80% Occupancy
+
+90% Occupancy
+
+Formula:
+
+Rooms × Occupancy × ARR × Days
+
+====================================================
+STEP 12 - AI INSIGHTS
+=====================
+
+Generate automatic owner summary.
+
+Examples:
+
+Woodpecker generated 44% of total company revenue.
+
+Blue Mont generated highest food revenue.
+
+TreeHouse has highest ARR.
+
+Forest Pinnacle occupancy dropped compared to previous month.
+
+OTA dependency exceeded 75%.
+
+Food revenue increased by 18%.
+
+Generate actionable recommendations.
+
+====================================================
+FINAL DELIVERABLE
+=================
+
+Before coding submit a detailed audit document.
+
+Show:
+
+1. Existing Reports Available
+2. Existing Data Available But Not Visible
+3. Existing Calculations
+4. Missing Reports
+5. Missing Database Fields
+6. Missing APIs
+7. Development Effort Estimate
+8. Recommended Rollout Plan
+
+PHASE 1 TO BUILD NOW:
+
+1. Executive Dashboard
+2. Property Performance Dashboard
+3. Monthly Sales Dashboard
+4. OTA vs Walk-in Dashboard
+5. Revenue Leakage Dashboard
+
+Do NOT start Phase 2 or Phase 3 until Phase 1 is audited and approved.
