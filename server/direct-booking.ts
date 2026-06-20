@@ -4,6 +4,12 @@
  * All functions here are called from the unauthenticated /api/public/book/*
  * routes. They intentionally reuse existing DB tables (rooms, bookings, guests)
  * so Hostezee remains the single source of truth.
+ *
+ * RACE-CONDITION FIX (createWebsiteBooking):
+ *   Room assignment and booking INSERT run inside a single pg transaction.
+ *   SELECT … FOR UPDATE on the rooms rows serialises concurrent requests —
+ *   the second concurrent request blocks until the first commits, then sees
+ *   the newly-inserted booking and correctly returns 409.
  */
 import crypto from "crypto";
 import { db, pool } from "./db";
@@ -30,16 +36,16 @@ function nightCount(checkIn: string, checkOut: string): number {
 
 export interface PublicRoomType {
   roomType: string;
-  roomCategory: string;            // 'standard' | 'dormitory' | etc.
+  roomCategory: string;
   pricePerNight: number;
   maxOccupancy: number;
-  totalBeds: number;               // relevant for dormitories
+  totalBeds: number;
   amenities: string[];
-  roomIds: number[];               // all room IDs of this type
+  roomIds: number[];
 }
 
 export interface AvailableRoomType extends PublicRoomType {
-  availableRooms: number;          // rooms / beds free for the entire date range
+  availableRooms: number;
 }
 
 export interface WebsiteBookingSummary {
@@ -81,7 +87,7 @@ export async function getBookingProperty(propertyId: number) {
 // ── Room Types ──────────────────────────────────────────────────────────────────
 
 export async function getPublicRooms(propertyId: number): Promise<PublicRoomType[]> {
-  await getBookingProperty(propertyId); // validates enabled
+  await getBookingProperty(propertyId);
 
   const allRooms = await db.select().from(rooms).where(eq(rooms.propertyId, propertyId));
 
@@ -100,8 +106,7 @@ export async function getPublicRooms(propertyId: number): Promise<PublicRoomType
         roomIds: [],
       });
     }
-    const entry = typeMap.get(key)!;
-    entry.roomIds.push(r.id);
+    typeMap.get(key)!.roomIds.push(r.id);
   }
 
   return Array.from(typeMap.values()).sort((a, b) => a.pricePerNight - b.pricePerNight);
@@ -126,8 +131,6 @@ export async function getPublicAvailability(
 
   if (allRoomIds.length === 0) return [];
 
-  // Fetch all active bookings that overlap the requested date range
-  // Overlap: bOut > checkIn AND bIn < checkOut  (standard hotel standard)
   const activeBookings = await db.select({
     id: bookings.id,
     roomId: bookings.roomId,
@@ -149,15 +152,11 @@ export async function getPublicAvailability(
   const result: AvailableRoomType[] = [];
 
   for (const rt of roomTypes) {
-    if (requestedGuests && rt.maxOccupancy < requestedGuests && rt.roomCategory !== "dormitory") {
-      // Single-room capacity too low — skip
-      continue;
-    }
+    if (requestedGuests && rt.maxOccupancy < requestedGuests && rt.roomCategory !== "dormitory") continue;
 
     const isDorm = rt.roomCategory === "dormitory";
 
     if (isDorm) {
-      // For dormitories, count beds booked across all rooms of this type
       let totalBedsInType = 0;
       let bedsOccupied = 0;
 
@@ -172,11 +171,8 @@ export async function getPublicAvailability(
         }
       }
       const bedsAvailable = Math.max(0, totalBedsInType - bedsOccupied);
-      if (bedsAvailable > 0) {
-        result.push({ ...rt, availableRooms: bedsAvailable });
-      }
+      if (bedsAvailable > 0) result.push({ ...rt, availableRooms: bedsAvailable });
     } else {
-      // Regular rooms — count how many rooms of this type are free for the entire date range
       let availableCount = 0;
       for (const roomId of rt.roomIds) {
         const overlapping = activeBookings.filter(b => {
@@ -185,22 +181,20 @@ export async function getPublicAvailability(
         });
         if (overlapping.length === 0) availableCount++;
       }
-      if (availableCount > 0) {
-        result.push({ ...rt, availableRooms: availableCount });
-      }
+      if (availableCount > 0) result.push({ ...rt, availableRooms: availableCount });
     }
   }
 
   return result;
 }
 
-// ── Website Booking Creation ───────────────────────────────────────────────────
+// ── Website Booking Creation (TRANSACTION-SAFE) ────────────────────────────────
 
 export interface CreateWebsiteBookingInput {
   propertyId: number;
   roomType: string;
-  checkIn: string;       // YYYY-MM-DD
-  checkOut: string;      // YYYY-MM-DD
+  checkIn: string;
+  checkOut: string;
   numberOfGuests: number;
   bedsRequested?: number;
   guestName: string;
@@ -211,74 +205,38 @@ export interface CreateWebsiteBookingInput {
 }
 
 export async function createWebsiteBooking(input: CreateWebsiteBookingInput): Promise<WebsiteBookingSummary> {
-  await getBookingProperty(input.propertyId); // validates enabled
+  // ── Pre-transaction validation (fast, no locks needed) ──────────────────────
+  await getBookingProperty(input.propertyId);
 
   if (input.checkOut <= input.checkIn) {
     throw Object.assign(new Error("Check-out must be after check-in"), { status: 400 });
   }
-
   const nights = nightCount(input.checkIn, input.checkOut);
   if (nights < 1) throw Object.assign(new Error("Minimum stay is 1 night"), { status: 400 });
 
-  // Find a free room of the requested type
-  const availability = await getPublicAvailability(input.propertyId, input.checkIn, input.checkOut, input.numberOfGuests);
-  const available = availability.find(rt => rt.roomType === input.roomType);
-  if (!available || available.availableRooms < 1) {
-    throw Object.assign(new Error("No rooms of this type are available for the selected dates"), { status: 409 });
+  const today = toDay(new Date());
+  if (input.checkIn < today) {
+    throw Object.assign(new Error("Check-in date cannot be in the past"), { status: 400 });
   }
 
-  const isDorm = available.roomCategory === "dormitory";
-
-  // Find the specific room to assign
-  let assignedRoomId: number | null = null;
-  const activeBookings = await db.select({
-    id: bookings.id,
-    roomId: bookings.roomId,
-    roomIds: bookings.roomIds,
-    checkInDate: bookings.checkInDate,
-    checkOutDate: bookings.checkOutDate,
-    status: bookings.status,
-  }).from(bookings).where(
-    and(
-      eq(bookings.propertyId, input.propertyId),
-      inArray(bookings.status, ["pending", "pending_payment", "confirmed", "checked-in"]),
-      sql`${bookings.checkOutDate} > ${input.checkIn}`,
-      sql`${bookings.checkInDate} < ${input.checkOut}`,
-    )
-  );
-
-  for (const roomId of available.roomIds) {
-    const overlapping = activeBookings.filter(b => {
-      const bRooms = [b.roomId, ...(b.roomIds ?? [])].filter(Boolean);
-      return bRooms.includes(roomId);
-    });
-    if (overlapping.length === 0) {
-      assignedRoomId = roomId;
-      break;
-    }
-  }
-
-  if (!assignedRoomId && !isDorm) {
-    throw Object.assign(new Error("Could not assign a room — please try again"), { status: 409 });
-  }
-  if (isDorm) assignedRoomId = available.roomIds[0]; // dorm: assign to first dorm room of this type
-
-  // Find or create guest record
   const cleanPhone = input.guestPhone.replace(/[^\d]/g, "");
   if (cleanPhone.length < 10) {
     throw Object.assign(new Error("Please provide a valid 10-digit phone number"), { status: 400 });
   }
 
+  // ── Guest upsert (outside transaction — not the race-prone section) ─────────
   let guestId: number;
-  const phoneVariants = [input.guestPhone, cleanPhone, `+91${cleanPhone.slice(-10)}`];
+  const phoneVariants = [...new Set([input.guestPhone, cleanPhone, `+91${cleanPhone.slice(-10)}`])];
   const existingGuests = await db.select().from(guests).where(
-    sql`${guests.phone} = ANY(${phoneVariants})`
+    inArray(guests.phone, phoneVariants)
   ).limit(1);
 
   if (existingGuests.length > 0) {
     guestId = existingGuests[0].id;
-    // Update name/email if changed
-    if (existingGuests[0].fullName !== input.guestName || (input.guestEmail && existingGuests[0].email !== input.guestEmail)) {
+    if (
+      existingGuests[0].fullName !== input.guestName ||
+      (input.guestEmail && existingGuests[0].email !== input.guestEmail)
+    ) {
       await db.update(guests).set({
         fullName: input.guestName,
         ...(input.guestEmail ? { email: input.guestEmail } : {}),
@@ -293,52 +251,168 @@ export async function createWebsiteBooking(input: CreateWebsiteBookingInput): Pr
     guestId = newGuest.id;
   }
 
-  // Calculate total amount
-  const totalAmount = available.pricePerNight * nights;
-  const advanceAmount = Math.ceil(totalAmount * 0.30); // 30% advance via Razorpay
-
-  // Generate token and hold expiry (15 minutes)
+  // ── Generate token + expiry before entering the transaction ─────────────────
   const token = generateToken();
   const holdExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-  // Create the booking in pending_payment status
-  const [booking] = await db.insert(bookings).values({
-    propertyId: input.propertyId,
-    roomId: assignedRoomId,
-    guestId,
-    checkInDate: input.checkIn as any,
-    checkOutDate: input.checkOut as any,
-    numberOfGuests: input.numberOfGuests,
-    bedsBooked: isDorm ? (input.bedsRequested ?? input.numberOfGuests) : undefined,
-    status: "pending_payment",
-    totalAmount: String(totalAmount),
-    advanceAmount: String(advanceAmount),
-    advancePaymentStatus: "pending",
-    source: "website",
-    mealPlan: input.mealPlan ?? "EP",
-    specialRequests: input.specialRequests ?? null,
-    createdBy: "website",
-    websiteBookingToken: token,
-    paymentHoldExpiresAt: holdExpiresAt,
-  } as any).returning();
+  // ── TRANSACTION: lock rooms → check overlaps → assign → insert ──────────────
+  //
+  // SELECT … FOR UPDATE on the rooms rows serialises concurrent transactions.
+  // A second concurrent request for the same room type will block at the FOR UPDATE
+  // until the first transaction commits.  After commit, the second transaction
+  // re-reads the bookings table inside the same transaction and correctly sees
+  // the booking just inserted — returning 409 if no inventory remains.
+  //
+  const client = await pool.connect();
+  let committed = false;
 
-  return {
-    token,
-    bookingId: booking.id,
-    status: "pending_payment",
-    holdExpiresAt: holdExpiresAt.toISOString(),
-    propertyId: input.propertyId,
-    roomType: input.roomType,
-    checkIn: input.checkIn,
-    checkOut: input.checkOut,
-    nights,
-    guests: input.numberOfGuests,
-    totalAmount,
-    paymentLinkUrl: null,
-    guestName: input.guestName,
-    guestPhone: input.guestPhone,
-    guestEmail: input.guestEmail ?? null,
-  };
+  try {
+    await client.query("BEGIN");
+
+    // 1. Lock all rooms of the requested type for the duration of this transaction.
+    //    ORDER BY id ensures all callers acquire locks in the same order, preventing deadlock.
+    const lockResult = await client.query<{
+      id: number;
+      room_category: string;
+      price_per_night: string;
+      max_occupancy: number;
+      total_beds: number | null;
+    }>(
+      `SELECT id, room_category, price_per_night, max_occupancy, total_beds
+       FROM rooms
+       WHERE property_id = $1
+         AND room_type = $2
+         AND COALESCE(status, 'available') NOT IN ('maintenance', 'out-of-order', 'blocked')
+       ORDER BY id
+       FOR UPDATE`,
+      [input.propertyId, input.roomType],
+    );
+
+    if (lockResult.rows.length === 0) {
+      throw Object.assign(new Error("No rooms of this type exist at this property"), { status: 409 });
+    }
+
+    const lockedRooms = lockResult.rows;
+    const lockedRoomIds = lockedRooms.map(r => r.id);
+    const isDorm = lockedRooms[0].room_category === "dormitory";
+    const pricePerNight = parseFloat(lockedRooms[0].price_per_night);
+
+    // 2. Fetch overlapping bookings for the locked rooms — inside the transaction
+    //    so we see the latest committed state (including any booking the concurrent
+    //    request just committed a moment ago).
+    const overlapResult = await client.query<{
+      room_id: number | null;
+      room_ids: number[] | null;
+      beds_booked: number | null;
+      number_of_guests: number | null;
+    }>(
+      `SELECT room_id, room_ids, beds_booked, number_of_guests
+       FROM bookings
+       WHERE property_id = $1
+         AND status IN ('pending', 'pending_payment', 'confirmed', 'checked-in')
+         AND check_out_date > $2
+         AND check_in_date  < $3
+         AND (room_id = ANY($4) OR room_ids && $4)`,
+      [input.propertyId, input.checkIn, input.checkOut, lockedRoomIds],
+    );
+
+    const overlapping = overlapResult.rows;
+
+    // 3. Assign the first free room (or check bed capacity for dorms).
+    let assignedRoomId: number;
+
+    if (isDorm) {
+      const totalBeds = lockedRooms.reduce((s, r) => s + (r.total_beds ?? 1), 0);
+      const bedsOccupied = overlapping.reduce((s, b) => s + (b.beds_booked ?? b.number_of_guests ?? 1), 0);
+      const bedsNeeded = input.bedsRequested ?? input.numberOfGuests;
+      if (totalBeds - bedsOccupied < bedsNeeded) {
+        throw Object.assign(
+          new Error("No beds available for the selected dates — please try different dates"),
+          { status: 409 },
+        );
+      }
+      assignedRoomId = lockedRoomIds[0];
+    } else {
+      const freeRoom = lockedRoomIds.find(roomId => {
+        return !overlapping.some(b => {
+          const bRooms = [b.room_id, ...(b.room_ids ?? [])].filter((x): x is number => x != null);
+          return bRooms.includes(roomId);
+        });
+      });
+
+      if (!freeRoom) {
+        throw Object.assign(
+          new Error("Room no longer available — another booking was just confirmed. Please search again."),
+          { status: 409 },
+        );
+      }
+      assignedRoomId = freeRoom;
+    }
+
+    // 4. Insert the booking inside the same transaction.
+    const totalAmount = pricePerNight * nights;
+    const advanceAmount = Math.ceil(totalAmount * 0.30);
+
+    const insertResult = await client.query<{ id: number }>(
+      `INSERT INTO bookings (
+         property_id, room_id, guest_id,
+         check_in_date, check_out_date,
+         number_of_guests, beds_booked,
+         status, total_amount, advance_amount,
+         advance_payment_status, source, meal_plan,
+         special_requests, created_by,
+         website_booking_token, payment_hold_expires_at
+       ) VALUES (
+         $1,  $2,  $3,
+         $4,  $5,
+         $6,  $7,
+         'pending_payment', $8, $9,
+         'pending', 'website', $10,
+         $11, 'website',
+         $12, $13
+       ) RETURNING id`,
+      [
+        input.propertyId, assignedRoomId, guestId,
+        input.checkIn, input.checkOut,
+        input.numberOfGuests, isDorm ? (input.bedsRequested ?? input.numberOfGuests) : null,
+        String(totalAmount), String(advanceAmount),
+        input.mealPlan ?? "EP",
+        input.specialRequests ?? null,
+        token, holdExpiresAt,
+      ],
+    );
+
+    await client.query("COMMIT");
+    committed = true;
+
+    const bookingId = insertResult.rows[0].id;
+
+    return {
+      token,
+      bookingId,
+      status: "pending_payment",
+      holdExpiresAt: holdExpiresAt.toISOString(),
+      propertyId: input.propertyId,
+      roomType: input.roomType,
+      checkIn: input.checkIn,
+      checkOut: input.checkOut,
+      nights,
+      guests: input.numberOfGuests,
+      totalAmount,
+      paymentLinkUrl: null,
+      guestName: input.guestName,
+      guestPhone: input.guestPhone,
+      guestEmail: input.guestEmail ?? null,
+    };
+
+  } catch (err) {
+    if (!committed) {
+      try { await client.query("ROLLBACK"); } catch { /* ignore rollback error */ }
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // ── Initiate Payment ───────────────────────────────────────────────────────────
@@ -357,17 +431,14 @@ export async function initiateWebsitePayment(token: string): Promise<{ paymentLi
     throw Object.assign(new Error("Booking hold has expired. Please search again."), { status: 410 });
   }
 
-  // Get advance amount (30% of total)
   const advanceAmount = Math.ceil(booking.totalAmount * 0.30);
 
-  // Create Razorpay payment link with WEB- reference_id
   const keyId = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
   if (!keyId || !keySecret) throw Object.assign(new Error("Payment gateway not configured"), { status: 503 });
 
   const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
   const referenceId = `WEB-${token}`;
-
   const cleanPhone = booking.guestPhone.replace(/[^\d]/g, "");
 
   const response = await fetch("https://api.razorpay.com/v1/payment_links", {
@@ -386,7 +457,7 @@ export async function initiateWebsitePayment(token: string): Promise<{ paymentLi
       },
       notify: { sms: false, email: false },
       upi_link: true,
-      expire_by: Math.floor(Date.now() / 1000) + 60 * 60, // 1 hour
+      expire_by: Math.floor(Date.now() / 1000) + 60 * 60,
     }),
   });
 
@@ -394,14 +465,13 @@ export async function initiateWebsitePayment(token: string): Promise<{ paymentLi
     const err: any = await response.json();
     throw Object.assign(
       new Error(`Payment gateway error: ${err.error?.description ?? "Unknown error"}`),
-      { status: 502 }
+      { status: 502 },
     );
   }
 
   const data: any = await response.json();
   const paymentLinkUrl: string = data.short_url;
 
-  // Update booking with payment link details
   await db.update(bookings as any).set({
     paymentLinkId: data.id,
     paymentLinkUrl,
@@ -432,14 +502,12 @@ export async function getWebsiteBookingByToken(token: string): Promise<WebsiteBo
 
   if (!row) return null;
 
-  // Get room type
   let roomType = "Unknown";
   if (row.roomId) {
     const [room] = await db.select().from(rooms).where(eq(rooms.id, row.roomId));
     if (room) roomType = room.roomType;
   }
 
-  // Get guest info
   let guestName = "", guestPhone = "", guestEmail: string | null = null;
   if (row.guestId) {
     const [guest] = await db.select().from(guests).where(eq(guests.id, row.guestId));
@@ -476,7 +544,7 @@ export async function cancelWebsiteBookingHold(token: string): Promise<void> {
   if (booking.status === "confirmed") {
     throw Object.assign(new Error("Confirmed bookings cannot be cancelled here. Please contact the property."), { status: 400 });
   }
-  if (!["pending_payment", "pending"].includes(booking.status)) return; // already cancelled/expired
+  if (!["pending_payment", "pending"].includes(booking.status)) return;
 
   await db.update(bookings).set({ status: "cancelled" } as any).where(eq(bookings.id, booking.bookingId));
 }
@@ -507,7 +575,7 @@ export async function expireStaleWebsiteHolds(): Promise<number> {
 
 /** Start the background cron that expires stale payment holds every 5 minutes */
 export function startHoldExpiryCron(): void {
-  expireStaleWebsiteHolds().catch(() => {}); // run once on startup
+  expireStaleWebsiteHolds().catch(() => {});
   setInterval(() => expireStaleWebsiteHolds().catch((e) => {
     console.warn("[DIRECT-BOOKING] Hold expiry cron error:", e.message);
   }), 5 * 60 * 1000);
