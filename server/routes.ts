@@ -5604,13 +5604,13 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       // If there's cancellation income, create a bank transaction entry
       if (parseFloat(String(cancellationCharges)) > 0) {
-        await storage.createBankTransaction({
+        await storage.createBankTransactions([{
           propertyId,
           transactionType: "cancellation_income",
           amount: String(cancellationCharges),
           description: `Cancellation charges for booking #${bookingId}`,
           transactionDate: today,
-        });
+        }]);
         console.log(`[CANCELLATION] Booking #${bookingId} - Cancellation income of ₹${cancellationCharges} recorded`);
       }
 
@@ -5726,13 +5726,13 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       // Record no-show income to wallet if charges apply
       if (chargesAmount > 0) {
-        await storage.createBankTransaction({
+        await storage.createBankTransactions([{
           propertyId,
           transactionType: "no_show_income",
           amount: String(chargesAmount),
           description: `No-show charges for booking #${bookingId}${noShowNotes ? ` — ${noShowNotes}` : ""}`,
           transactionDate: today,
-        });
+        }]);
         console.log(`[NO-SHOW] Booking #${bookingId} — ₹${chargesAmount} no-show income recorded`);
       }
 
