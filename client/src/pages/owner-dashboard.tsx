@@ -1488,7 +1488,7 @@ function CeoSummaryDashboard({ filters }: { filters: FilterState }) {
   const kpis = [
     { title: "Today's Revenue", value: INR_compact(d.today), sub: d.yesterday ? `vs ₹${(d.yesterday / 1000).toFixed(0)}K yesterday` : undefined, trend: todayVsYday, icon: <DollarSign className="h-4 w-4 text-emerald-600" />, color: "emerald" },
     { title: "Month to Date", value: INR_compact(d.monthToDate), sub: d.monthTarget ? `Target: ${INR_compact(d.monthTarget)}` : undefined, icon: <TrendingUp className="h-4 w-4 text-blue-600" />, color: "blue" },
-    { title: "Target Achievement", value: ach !== null ? `${ach}%` : "No target", sub: ach !== null ? (ach >= 100 ? "🎯 On track" : ach >= 80 ? "⚠️ Close" : "❌ Behind") : "Set targets to track", icon: <Target className="h-4 w-4 text-violet-600" />, color: "violet" },
+    { title: "Target Achievement", value: ach != null ? `${ach}%` : "No target", sub: ach != null ? (ach >= 100 ? "🎯 On track" : ach >= 80 ? "⚠️ Close" : "❌ Behind") : "Set targets to track", icon: <Target className="h-4 w-4 text-violet-600" />, color: "violet" },
     { title: "Occupancy (MTD)", value: `${(d.occupancy || 0).toFixed(1)}%`, sub: `ARR ${INR_compact(d.arr)}`, icon: <Bed className="h-4 w-4 text-teal-600" />, color: "teal" },
     { title: "RevPAR", value: INR_compact(d.revpar), sub: "Revenue per available room", icon: <Hotel className="h-4 w-4 text-indigo-600" />, color: "indigo" },
     { title: "Outstanding", value: INR_compact(d.outstanding), sub: "Uncollected bills", icon: <AlertTriangle className="h-4 w-4 text-amber-600" />, color: "amber" },
