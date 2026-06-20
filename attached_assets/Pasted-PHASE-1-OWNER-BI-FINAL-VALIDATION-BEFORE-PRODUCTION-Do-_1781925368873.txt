@@ -1,0 +1,267 @@
+PHASE 1 OWNER BI – FINAL VALIDATION BEFORE PRODUCTION
+
+Do NOT deploy yet.
+
+Perform a complete reconciliation audit between the new Owner BI module and existing Hostezee reports.
+
+==================================================
+VALIDATION 1 - REVENUE RECONCILIATION
+=====================================
+
+Compare:
+
+Owner BI Total Revenue
+
+vs
+
+Existing Monthly Report Revenue
+
+vs
+
+Existing P&L Revenue
+
+vs
+
+Dashboard Revenue
+
+For the same date range.
+
+Acceptable difference:
+
+0.00
+
+Show report:
+
+Date Range
+Owner BI Revenue
+Monthly Report Revenue
+P&L Revenue
+Difference
+
+==================================================
+VALIDATION 2 - ROOM REVENUE
+===========================
+
+Compare:
+
+Owner BI Room Revenue
+
+vs
+
+P&L Room Revenue
+
+vs
+
+Bills Room Charges
+
+Must match exactly.
+
+==================================================
+VALIDATION 3 - FOOD REVENUE
+===========================
+
+Compare:
+
+Owner BI Food Revenue
+
+vs
+
+Food Orders Report
+
+vs
+
+Z Report
+
+Must match exactly.
+
+==================================================
+VALIDATION 4 - ARR VALIDATION
+=============================
+
+For every property:
+
+ARR =
+Room Revenue / Occupied Nights
+
+Show calculation proof.
+
+Property
+Room Revenue
+Occupied Nights
+Calculated ARR
+Dashboard ARR
+
+==================================================
+VALIDATION 5 - OCCUPANCY VALIDATION
+===================================
+
+For every property:
+
+Occupancy % =
+Occupied Room Nights /
+Available Room Nights
+
+Verify:
+
+Woodpecker
+Blue Mont
+Forest Pinnacle
+TreeHouse
+Yolo
+
+Show formula result.
+
+==================================================
+VALIDATION 6 - REVPAR VALIDATION
+================================
+
+For every property:
+
+RevPAR =
+Room Revenue /
+Available Room Nights
+
+Verify calculations.
+
+==================================================
+VALIDATION 7 - OTA VS WALK-IN
+=============================
+
+Show classification rules.
+
+Exactly which values are considered:
+
+OTA
+
+Walk-in
+
+Website
+
+Corporate
+
+Direct
+
+Provide source mapping table.
+
+We must ensure no booking source is being missed.
+
+==================================================
+VALIDATION 8 - REVENUE LEAKAGE
+==============================
+
+Provide sample records for:
+
+Cancelled Revenue
+
+No Show Revenue
+
+Outstanding Revenue
+
+Ghost Check-ins
+
+Unsold Inventory
+
+Verify formulas.
+
+==================================================
+VALIDATION 9 - PROPERTY SCORECARD
+=================================
+
+Verify:
+
+Property Revenue
+
+Property Room Revenue
+
+Property Food Revenue
+
+Bookings
+
+Guest Nights
+
+ARR
+
+Occupancy
+
+Match source data.
+
+==================================================
+VALIDATION 10 - PERFORMANCE
+===========================
+
+Measure:
+
+API Response Time
+
+/api/owner/dashboard
+
+/api/owner/property-performance
+
+/api/owner/monthly-sales
+
+/api/owner/ota-analysis
+
+/api/owner/revenue-leakage
+
+Target:
+
+<500ms preferred
+
+<1000ms maximum
+
+==================================================
+VALIDATION 11 - ROLE SECURITY
+=============================
+
+Verify:
+
+Staff = blocked
+
+Manager = blocked
+
+Admin = allowed
+
+Super Admin = allowed
+
+Verify both frontend and backend protection.
+
+==================================================
+VALIDATION 12 - NULL DATA TEST
+==============================
+
+Test properties with:
+
+No bookings
+
+No food sales
+
+No expenses
+
+No occupancy
+
+Ensure:
+
+No crashes
+
+No NaN
+
+No Infinity
+
+No blank charts
+
+==================================================
+FINAL OUTPUT REQUIRED
+=====================
+
+Provide a Production Readiness Report.
+
+Show:
+
+1. Validation Results
+2. Calculation Proof
+3. Data Reconciliation
+4. Performance Metrics
+5. Security Verification
+6. Any Remaining Risks
+
+Only after all validations pass should deployment be recommended.

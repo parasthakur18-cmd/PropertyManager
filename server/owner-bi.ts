@@ -89,15 +89,18 @@ function propFilterExpenses(ids?: number[]) {
 
 // ─────────────────────────────────────────────
 // Core: bills joined to bookings in date range
-// Revenue is "realized" when checkout happens (bill created)
+// Revenue is recognized by bills.createdAt + paymentStatus='paid'
+// This matches the Monthly P&L report methodology exactly.
 // ─────────────────────────────────────────────
 
 async function getBillsInRange(filters: OwnerBIFilters) {
+  const start = new Date(filters.startDate + "T00:00:00.000Z");
+  const end = new Date(filters.endDate + "T23:59:59.999Z");
+
   const conditions = [
-    gte(bookings.checkOutDate, filters.startDate),
-    lte(bookings.checkOutDate, filters.endDate),
-    ne(bookings.status, "cancelled"),
-    ne(bookings.status, "no_show"),
+    gte(bills.createdAt, start),
+    lte(bills.createdAt, end),
+    eq(bills.paymentStatus, "paid"),
   ];
   if (filters.propertyIds?.length) {
     conditions.push(inArray(bookings.propertyId, filters.propertyIds));
@@ -123,8 +126,38 @@ async function getBillsInRange(filters: OwnerBIFilters) {
       paymentStatus: bills.paymentStatus,
       balanceAmount: bills.balanceAmount,
     })
-    .from(bookings)
-    .leftJoin(bills, eq(bills.bookingId, bookings.id))
+    .from(bills)
+    .innerJoin(bookings, eq(bills.bookingId, bookings.id))
+    .where(and(...conditions));
+}
+
+// ─────────────────────────────────────────────
+// Core: outstanding (unpaid) bills — ALL time, property-scoped
+// Used for leakage reporting; not date-range filtered since outstanding
+// means "still unpaid today", regardless of when bill was created.
+// ─────────────────────────────────────────────
+
+async function getOutstandingBills(propertyIds?: number[]) {
+  const conditions: any[] = [
+    ne(bills.paymentStatus, "paid"),
+    isNotNull(bills.bookingId),
+  ];
+  if (propertyIds?.length) {
+    conditions.push(inArray(bookings.propertyId, propertyIds));
+  }
+  return await db
+    .select({
+      bookingId: bookings.id,
+      propertyId: bookings.propertyId,
+      status: bookings.status,
+      checkOutDate: bookings.checkOutDate,
+      billId: bills.id,
+      billTotal: bills.totalAmount,
+      balanceAmount: bills.balanceAmount,
+      paymentStatus: bills.paymentStatus,
+    })
+    .from(bills)
+    .innerJoin(bookings, eq(bills.bookingId, bookings.id))
     .where(and(...conditions));
 }
 
@@ -139,7 +172,7 @@ async function getFoodOrdersInRange(filters: OwnerBIFilters) {
   const conditions = [
     gte(orders.createdAt, start),
     lte(orders.createdAt, end),
-    eq(orders.paymentStatus, "paid"),
+    inArray(orders.status, ["delivered", "completed"]),
     eq(orders.isTest, false),
   ];
   if (filters.propertyIds?.length) {
@@ -305,20 +338,26 @@ function num(v: string | number | null | undefined): number {
 // ─────────────────────────────────────────────
 
 export async function getOwnerDashboard(filters: OwnerBIFilters) {
-  const [billRows, foodRows, cancelledRows, noShowRows, propsWithRooms] =
+  const [billRows, foodRows, cancelledRows, noShowRows, propsWithRooms, outstandingBillRows] =
     await Promise.all([
       getBillsInRange(filters),
       getFoodOrdersInRange(filters),
       getCancelledInRange(filters),
       getNoShowsInRange(filters),
       getPropertiesWithRooms(filters.propertyIds),
+      getOutstandingBills(filters.propertyIds),
     ]);
+
+  // Outstanding from dedicated query (unpaid bills, all time)
+  const outstanding = outstandingBillRows.reduce(
+    (sum, r) => sum + (num(r.balanceAmount) || num(r.billTotal)),
+    0
+  );
 
   // Compute room revenue, food, extra, totals
   let roomRevenue = 0;
   let foodFromBills = 0;
   let otherRevenue = 0;
-  let outstanding = 0;
   let occupiedRoomNights = 0;
 
   const bookingIds = new Set<number>();
@@ -331,10 +370,6 @@ export async function getOwnerDashboard(filters: OwnerBIFilters) {
     roomRevenue += num(row.roomCharges);
     foodFromBills += num(row.foodCharges);
     otherRevenue += num(row.extraCharges);
-
-    if (row.paymentStatus === "pending") {
-      outstanding += num(row.balanceAmount) || num(row.billTotal);
-    }
 
     const nights = occupiedNightsForBooking(
       row.checkInDate,
@@ -464,12 +499,20 @@ export async function getOwnerDashboard(filters: OwnerBIFilters) {
 // ─────────────────────────────────────────────
 
 export async function getPropertyPerformance(filters: OwnerBIFilters) {
-  const [billRows, foodRows, cancelledRows, propsWithRooms] = await Promise.all([
+  const [billRows, foodRows, cancelledRows, propsWithRooms, outstandingBillRows] = await Promise.all([
     getBillsInRange(filters),
     getFoodOrdersInRange(filters),
     getCancelledInRange(filters),
     getPropertiesWithRooms(filters.propertyIds),
+    getOutstandingBills(filters.propertyIds),
   ]);
+
+  // Pre-aggregate outstanding by property from dedicated query
+  const outstandingByPropId: Record<number, number> = {};
+  for (const r of outstandingBillRows) {
+    outstandingByPropId[r.propertyId] = (outstandingByPropId[r.propertyId] || 0) +
+      (num(r.balanceAmount) || num(r.billTotal));
+  }
 
   const days = daysBetween(filters.startDate, filters.endDate);
   const propMap = new Map(propsWithRooms.map((p) => [p.id, p]));
@@ -533,10 +576,6 @@ export async function getPropertyPerformance(filters: OwnerBIFilters) {
       );
       p.guestNights += stayNights;
 
-      if (row.paymentStatus === "pending") {
-        p.outstanding += num(row.balanceAmount) || num(row.billTotal);
-      }
-
       const cat = classifySource(row.source);
       const rowRevenue = num(row.roomCharges) + num(row.foodCharges) + num(row.extraCharges);
       if (cat === "ota") p.otaRevenue += rowRevenue;
@@ -594,7 +633,7 @@ export async function getPropertyPerformance(filters: OwnerBIFilters) {
         other: data.otherRevenue,
         ota: data.otaRevenue,
         walkIn: data.walkInRevenue,
-        outstanding: data.outstanding,
+        outstanding: outstandingByPropId[prop.id] || 0,
         cancelled: cancelledByProp[prop.id] || 0,
       },
       bookings: data.bookingSet.size,
@@ -667,7 +706,7 @@ export async function getMonthlySales(filters: OwnerBIFilters) {
   const foodConditions = [
     gte(orders.createdAt, startTs),
     lte(orders.createdAt, endTs),
-    eq(orders.paymentStatus, "paid"),
+    inArray(orders.status, ["delivered", "completed"]),
     eq(orders.isTest, false),
   ];
   if (filters.propertyIds?.length) {
@@ -905,16 +944,14 @@ export async function getOtaAnalysis(filters: OwnerBIFilters) {
 // ─────────────────────────────────────────────
 
 export async function getRevenueLeakage(filters: OwnerBIFilters) {
-  const [cancelledRows, noShowRows, propsWithRooms, billRows] =
+  const [cancelledRows, noShowRows, propsWithRooms, outstandingRows, billRows] =
     await Promise.all([
       getCancelledInRange(filters),
       getNoShowsInRange(filters),
       getPropertiesWithRooms(filters.propertyIds),
+      getOutstandingBills(filters.propertyIds),
       getBillsInRange(filters),
     ]);
-
-  // Outstanding / aging
-  const outstandingRows = billRows.filter((r) => r.paymentStatus === "pending");
 
   const now = new Date();
   const aging = { d0_7: 0, d8_15: 0, d16_30: 0, d30plus: 0 };
@@ -1142,7 +1179,7 @@ export async function getDailySnapshot(filters: OwnerBIFilters) {
   const yestFoodCond = [
     gte(orders.createdAt, yestStart),
     lte(orders.createdAt, yestEnd),
-    eq(orders.paymentStatus, "paid"),
+    inArray(orders.status, ["delivered", "completed"]),
     eq(orders.isTest, false),
     ...(propIds?.length ? [inArray(orders.propertyId, propIds)] : []),
   ];
@@ -1163,7 +1200,7 @@ export async function getDailySnapshot(filters: OwnerBIFilters) {
       and(
         gte(orders.createdAt, new Date(thisMonthStart + "T00:00:00.000Z")),
         lte(orders.createdAt, new Date(thisMonthEnd + "T23:59:59.999Z")),
-        eq(orders.paymentStatus, "paid"),
+        inArray(orders.status, ["delivered", "completed"]),
         eq(orders.isTest, false),
         ...(propIds?.length ? [inArray(orders.propertyId, propIds)] : [])
       )
