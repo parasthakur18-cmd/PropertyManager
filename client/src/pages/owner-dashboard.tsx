@@ -2239,6 +2239,8 @@ function SourceIntelligenceTab({ filters }: { filters: FilterState }) {
   const qp = buildQP(filters);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiBrief, setAiBrief] = useState<string | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
+  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/owner/source-intelligence", filters],
@@ -2282,6 +2284,24 @@ function SourceIntelligenceTab({ filters }: { filters: FilterState }) {
   const groupStats = data.groupStats || {};
   const groupOrganizers: any[] = data.groupOrganizers || [];
   const groupOrgRisk: string = data.groupOrgRisk || "healthy";
+
+  // Deep dive computed data
+  const SOURCE_OPTIONS = [
+    { value: "all", label: "All Sources" },
+    { value: "ota", label: "OTA" },
+    { value: "direct", label: "Direct" },
+    { value: "walk_in", label: "Walk-in" },
+    { value: "travel_agent", label: "Travel Agent" },
+    { value: "corporate", label: "Corporate" },
+    { value: "group", label: "Group Booking" },
+    { value: "website", label: "Website" },
+    { value: "other", label: "Other" },
+  ];
+  const filteredSources = sourceFilter === "all" ? sources : sources.filter((s: any) => s.category === sourceFilter);
+  const agentTotalRevenue = topAgents.reduce((s: number, a: any) => s + a.revenue, 0);
+  const agentTotalNights  = topAgents.reduce((s: number, a: any) => s + a.roomNights, 0);
+  const selectedAgent = selectedAgentId !== null ? topAgents.find((a: any) => a.id === selectedAgentId) : null;
+  const isTAFilter = sourceFilter === "travel_agent";
 
   // Deterministic AI action recommendations
   const aiActions: { priority: "high" | "medium"; icon: string; action: string; impact: string; reason: string }[] = [];
@@ -2343,6 +2363,312 @@ function SourceIntelligenceTab({ filters }: { filters: FilterState }) {
           </CardContent>
         </Card>
       )}
+
+      {/* ═══ SOURCE & TRAVEL AGENT DEEP DIVE (Primary Report) ═══ */}
+      <Card className="border-2 border-primary/20">
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-primary" />
+                Source Performance Report
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">Drill into any channel or agent — all metrics recalculate</p>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Select value={sourceFilter} onValueChange={(v) => { setSourceFilter(v); setSelectedAgentId(null); }}>
+                <SelectTrigger className="h-8 text-xs w-40">
+                  <SelectValue placeholder="All Sources" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SOURCE_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {isTAFilter && topAgents.length > 0 && (
+                <Select value={selectedAgentId !== null ? String(selectedAgentId) : "all"} onValueChange={(v) => setSelectedAgentId(v === "all" ? null : Number(v))}>
+                  <SelectTrigger className="h-8 text-xs w-44">
+                    <SelectValue placeholder="All Agents" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">All Agents</SelectItem>
+                    {topAgents.map((a: any) => (
+                      <SelectItem key={a.id} value={String(a.id)} className="text-xs">{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5 pt-0">
+
+          {/* ── Source Share Table ── */}
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+              {sourceFilter === "all" ? "All Sources" : SOURCE_OPTIONS.find(o => o.value === sourceFilter)?.label} — Revenue, Bookings & Room Night Contribution
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 pr-3 font-medium text-muted-foreground">Source</th>
+                    <th className="text-right py-2 px-2 font-medium text-muted-foreground">Revenue</th>
+                    <th className="text-right py-2 px-2 font-medium text-muted-foreground">Bookings</th>
+                    <th className="text-right py-2 px-2 font-medium text-muted-foreground">Room Nights</th>
+                    <th className="text-right py-2 px-2 font-medium text-muted-foreground">ARR</th>
+                    <th className="text-right py-2 px-2 font-medium text-muted-foreground">Night Share</th>
+                    <th className="text-right py-2 pl-2 font-medium text-muted-foreground">Rev Share</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredSources.map((s: any) => {
+                    const nightShare = totals.roomNights > 0 ? (s.roomNights / totals.roomNights) * 100 : 0;
+                    return (
+                      <tr key={s.category} className="border-b last:border-0 hover:bg-muted/30">
+                        <td className="py-2.5 pr-3">
+                          <div className="flex items-center gap-2">
+                            <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: SOURCE_COLORS[s.category] || "#94A3B8" }} />
+                            <span className="font-medium">{s.label}</span>
+                            {s.trendPct != null && (
+                              <span className={`text-[10px] font-semibold ${s.trendPct >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                                {s.trendPct >= 0 ? "↑" : "↓"}{Math.abs(s.trendPct).toFixed(0)}%
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="text-right py-2.5 px-2 font-mono font-semibold">{fmt(s.revenue)}</td>
+                        <td className="text-right py-2.5 px-2">{fmtN(s.bookings)}</td>
+                        <td className="text-right py-2.5 px-2">{fmtN(s.roomNights)}</td>
+                        <td className="text-right py-2.5 px-2 font-mono">₹{fmtN(Math.round(s.arr))}</td>
+                        <td className="text-right py-2.5 px-2">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <div className="w-12 h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div className="h-full rounded-full" style={{ width: `${Math.min(100, nightShare)}%`, backgroundColor: SOURCE_COLORS[s.category] || "#94A3B8" }} />
+                            </div>
+                            <span className="w-8 text-right">{nightShare.toFixed(0)}%</span>
+                          </div>
+                        </td>
+                        <td className="text-right py-2.5 pl-2">
+                          <Badge variant="secondary" className="text-[10px]">{s.revenueSharePct.toFixed(0)}%</Badge>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredSources.length === 0 && (
+                    <tr><td colSpan={7} className="py-6 text-center text-muted-foreground text-xs">No data for selected source</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* ── Travel Agent Deep Dive ── */}
+          {isTAFilter && (
+            <div className="space-y-4 border-t pt-4">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Travel Agent Analysis — {topAgents.length} agents ranked by revenue
+              </p>
+
+              {/* Agent Performance Card (when specific agent selected) */}
+              {selectedAgent && (
+                <div className="p-4 rounded-xl border-2 border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/20 space-y-3">
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <div>
+                      <p className="text-sm font-bold text-purple-800 dark:text-purple-200">{selectedAgent.name}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {selectedAgent.lastBookingDate
+                          ? `Last booking: ${new Date(selectedAgent.lastBookingDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`
+                          : "No recent booking date"}
+                      </p>
+                    </div>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {selectedAgent.daysSinceLastBooking != null && selectedAgent.daysSinceLastBooking > 45 && (
+                        <Badge className="text-[10px] bg-red-100 text-red-700 border-0">🔴 {selectedAgent.daysSinceLastBooking}d inactive</Badge>
+                      )}
+                      {selectedAgent.daysSinceLastBooking != null && selectedAgent.daysSinceLastBooking > 30 && selectedAgent.daysSinceLastBooking <= 45 && (
+                        <Badge className="text-[10px] bg-amber-100 text-amber-700 border-0">🟡 Slow</Badge>
+                      )}
+                      {selectedAgent.daysSinceLastBooking != null && selectedAgent.daysSinceLastBooking <= 30 && (
+                        <Badge className="text-[10px] bg-emerald-100 text-emerald-700 border-0">⭐ Active</Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { label: "Revenue", value: fmt(selectedAgent.revenue), sub: `${selectedAgent.revenueSharePct.toFixed(1)}% of total` },
+                      { label: "Bookings", value: fmtN(selectedAgent.bookings), sub: "confirmed stays" },
+                      { label: "Room Nights", value: fmtN(selectedAgent.roomNights), sub: `${agentTotalNights > 0 ? ((selectedAgent.roomNights / agentTotalNights) * 100).toFixed(0) : 0}% of TA nights` },
+                      { label: "ARR", value: `₹${fmtN(Math.round(selectedAgent.arr))}`, sub: "per room night" },
+                      { label: "Avg Stay", value: `${selectedAgent.bookings > 0 ? (selectedAgent.roomNights / selectedAgent.bookings).toFixed(1) : 0} nights`, sub: "per booking" },
+                      { label: "Revenue Share", value: `${selectedAgent.revenueSharePct.toFixed(1)}%`, sub: "of total revenue" },
+                      { label: "TA Night Share", value: `${agentTotalNights > 0 ? ((selectedAgent.roomNights / agentTotalNights) * 100).toFixed(0) : 0}%`, sub: "of all TA nights" },
+                      { label: "TA Rev Share", value: `${agentTotalRevenue > 0 ? ((selectedAgent.revenue / agentTotalRevenue) * 100).toFixed(0) : 0}%`, sub: "of all TA revenue" },
+                    ].map(k => (
+                      <div key={k.label} className="p-2.5 rounded-lg bg-white dark:bg-background border">
+                        <p className="text-[10px] text-muted-foreground">{k.label}</p>
+                        <p className="text-base font-bold text-purple-700 dark:text-purple-300 mt-0.5">{k.value}</p>
+                        <p className="text-[10px] text-muted-foreground">{k.sub}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Agent Comparison Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b bg-muted/30">
+                      <th className="text-left py-2 px-2 font-medium text-muted-foreground">#</th>
+                      <th className="text-left py-2 px-2 font-medium text-muted-foreground">Agent Name</th>
+                      <th className="text-right py-2 px-2 font-medium text-muted-foreground">Revenue</th>
+                      <th className="text-right py-2 px-2 font-medium text-muted-foreground">Nights</th>
+                      <th className="text-right py-2 px-2 font-medium text-muted-foreground">Bookings</th>
+                      <th className="text-right py-2 px-2 font-medium text-muted-foreground">ARR</th>
+                      <th className="text-right py-2 px-2 font-medium text-muted-foreground">Avg Stay</th>
+                      <th className="text-right py-2 px-2 font-medium text-muted-foreground">Rev Share</th>
+                      <th className="text-right py-2 px-2 font-medium text-muted-foreground">Night Share</th>
+                      <th className="text-right py-2 px-2 font-medium text-muted-foreground">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topAgents.map((a: any, i: number) => {
+                      const avgStay = a.bookings > 0 ? (a.roomNights / a.bookings).toFixed(1) : "—";
+                      const taRevShare = agentTotalRevenue > 0 ? ((a.revenue / agentTotalRevenue) * 100).toFixed(0) : 0;
+                      const taNightShare = agentTotalNights > 0 ? ((a.roomNights / agentTotalNights) * 100).toFixed(0) : 0;
+                      const isInactive = a.daysSinceLastBooking != null && a.daysSinceLastBooking > 45;
+                      const isSlow = !isInactive && a.daysSinceLastBooking != null && a.daysSinceLastBooking > 30;
+                      const isSelected = selectedAgentId === a.id;
+                      return (
+                        <tr
+                          key={a.id}
+                          className={`border-b last:border-0 cursor-pointer transition-colors ${isSelected ? "bg-purple-50 dark:bg-purple-950/20" : "hover:bg-muted/30"} ${isInactive ? "opacity-70" : ""}`}
+                          onClick={() => setSelectedAgentId(isSelected ? null : a.id)}
+                        >
+                          <td className="py-2.5 px-2 text-muted-foreground">{i + 1}</td>
+                          <td className="py-2.5 px-2">
+                            <div className="flex items-center gap-1.5">
+                              {i === 0 && <span className="text-amber-500">★</span>}
+                              <span className={`font-medium ${isSelected ? "text-purple-700 dark:text-purple-300" : ""}`}>{a.name}</span>
+                              {isSelected && <Badge className="text-[9px] bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-200 border-0 px-1">Selected</Badge>}
+                            </div>
+                            {a.lastBookingDate && (
+                              <p className="text-[10px] text-muted-foreground mt-0.5">
+                                Last: {new Date(a.lastBookingDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
+                              </p>
+                            )}
+                          </td>
+                          <td className="text-right py-2.5 px-2 font-mono font-semibold">{fmt(a.revenue)}</td>
+                          <td className="text-right py-2.5 px-2">{fmtN(a.roomNights)}</td>
+                          <td className="text-right py-2.5 px-2">{a.bookings}</td>
+                          <td className="text-right py-2.5 px-2 font-mono">₹{fmtN(Math.round(a.arr))}</td>
+                          <td className="text-right py-2.5 px-2">{avgStay}n</td>
+                          <td className="text-right py-2.5 px-2">
+                            <div className="flex items-center justify-end gap-1">
+                              <div className="w-10 h-1.5 bg-muted rounded-full overflow-hidden">
+                                <div className="h-full rounded-full bg-purple-500" style={{ width: `${Math.min(100, Number(taRevShare))}%` }} />
+                              </div>
+                              <span>{taRevShare}%</span>
+                            </div>
+                          </td>
+                          <td className="text-right py-2.5 px-2">{taNightShare}%</td>
+                          <td className="text-right py-2.5 px-2">
+                            {isInactive
+                              ? <Badge className="text-[9px] bg-red-100 text-red-700 border-0">🔴 {a.daysSinceLastBooking}d</Badge>
+                              : isSlow
+                              ? <Badge className="text-[9px] bg-amber-100 text-amber-700 border-0">🟡 Slow</Badge>
+                              : <Badge className="text-[9px] bg-emerald-100 text-emerald-700 border-0">✅ Active</Badge>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {topAgents.length === 0 && (
+                      <tr><td colSpan={10} className="py-6 text-center text-muted-foreground text-xs">No travel agent bookings in this period</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Within-TA Revenue & Night Share */}
+              {topAgents.length > 1 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t">
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Revenue Share within Travel Agents</p>
+                    {topAgents.slice(0, 6).map((a: any) => {
+                      const share = agentTotalRevenue > 0 ? (a.revenue / agentTotalRevenue) * 100 : 0;
+                      return (
+                        <div key={a.id} className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground w-28 truncate shrink-0">{a.name}</span>
+                          <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                            <div className="h-full rounded-full bg-purple-500" style={{ width: `${share}%` }} />
+                          </div>
+                          <span className="text-xs w-10 text-right font-medium">{share.toFixed(0)}%</span>
+                          <span className="text-xs text-muted-foreground w-12 text-right">{fmt(a.revenue)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Room Night Share within Travel Agents</p>
+                    {topAgents.slice(0, 6).map((a: any) => {
+                      const share = agentTotalNights > 0 ? (a.roomNights / agentTotalNights) * 100 : 0;
+                      return (
+                        <div key={a.id} className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground w-28 truncate shrink-0">{a.name}</span>
+                          <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                            <div className="h-full rounded-full bg-violet-500" style={{ width: `${share}%` }} />
+                          </div>
+                          <span className="text-xs w-10 text-right font-medium">{share.toFixed(0)}%</span>
+                          <span className="text-xs text-muted-foreground w-12 text-right">{fmtN(a.roomNights)}n</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Room Night Share (all sources) ── */}
+          <div className="border-t pt-4 space-y-2">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Room Night Share by Source</p>
+            {sources.sort((a: any, b: any) => b.roomNights - a.roomNights).map((s: any) => {
+              const share = totals.roomNights > 0 ? (s.roomNights / totals.roomNights) * 100 : 0;
+              return (
+                <div key={s.category} className="flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: SOURCE_COLORS[s.category] || "#94A3B8" }} />
+                  <span className="text-xs text-muted-foreground w-24 truncate shrink-0">{s.label}</span>
+                  <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${share}%`, backgroundColor: SOURCE_COLORS[s.category] || "#94A3B8" }} />
+                  </div>
+                  <span className="text-xs font-semibold w-8 text-right">{share.toFixed(0)}%</span>
+                  <span className="text-xs text-muted-foreground w-12 text-right">{fmtN(s.roomNights)}n</span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ── Revenue Share (all sources) ── */}
+          <div className="border-t pt-4 space-y-2">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Revenue Share by Source</p>
+            {[...sources].sort((a: any, b: any) => b.revenue - a.revenue).map((s: any) => (
+              <div key={s.category} className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: SOURCE_COLORS[s.category] || "#94A3B8" }} />
+                <span className="text-xs text-muted-foreground w-24 truncate shrink-0">{s.label}</span>
+                <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${s.revenueSharePct}%`, backgroundColor: SOURCE_COLORS[s.category] || "#94A3B8" }} />
+                </div>
+                <span className="text-xs font-semibold w-8 text-right">{s.revenueSharePct.toFixed(0)}%</span>
+                <span className="text-xs text-muted-foreground w-14 text-right font-mono">{fmt(s.revenue)}</span>
+              </div>
+            ))}
+          </div>
+
+        </CardContent>
+      </Card>
+      {/* ═══════════════════════════════════════════════════════════ */}
 
       {/* Executive Compass — 5 owner questions answered with data */}
       <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">

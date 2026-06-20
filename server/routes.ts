@@ -26525,6 +26525,11 @@ Respond ONLY with valid JSON (no markdown, no extra text):
   // Start daily report cron
   startDailyReportJob();
 
+  // Seed default OTA commission rules (idempotent — skips if already exist)
+  import("./owner-bi").then(({ seedDefaultOtaCommissions }) => {
+    seedDefaultOtaCommissions().catch(e => console.error("[Startup] seedDefaultOtaCommissions failed:", e));
+  });
+
   // Start kitchen-acceptance escalation cron (Phase: second-level alert)
   startKitchenAcceptanceEscalationJob();
 
