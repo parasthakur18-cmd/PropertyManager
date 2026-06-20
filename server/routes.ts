@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { strictLimiter } from "./rate-limiters";
+import { strictLimiter, publicBookingLimiter } from "./rate-limiters";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { randomUUID } from "crypto";
 import bcryptjs from "bcryptjs";
@@ -78,6 +78,16 @@ import webpush from "web-push";
 import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty, scheduleSyncForProperty, pullReservationsFromAioSell, startInventoryHealthJob, type AiosellReservation, type InventoryRestrictionUpdate } from "./aiosell";
 import { verifyProperties, verifyProperty, auditProperty, storeAuditReport } from "./aiosell-verifier";
 import { sendIssueReportNotificationEmail } from "./email-service";
+import {
+  getBookingProperty,
+  getPublicRooms,
+  getPublicAvailability,
+  createWebsiteBooking,
+  initiateWebsitePayment,
+  getWebsiteBookingByToken,
+  cancelWebsiteBookingHold,
+  startHoldExpiryCron,
+} from "./direct-booking";
 import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature, isRealPhone } from "./razorpay";
 import { 
   getTenantContext, 
@@ -1066,6 +1076,122 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Direct Booking Engine (public, no auth) ────────────────────────────────
+
+  // GET /api/public/book/properties — list all properties with direct booking enabled
+  app.get("/api/public/book/properties", async (req, res) => {
+    try {
+      const allProps = await storage.getAllProperties();
+      const enabled = allProps
+        .filter(p => p.isActive && (p as any).directBookingEnabled)
+        .map(p => ({ id: p.id, name: p.name, location: p.location, description: p.description }));
+      res.json(enabled);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/public/book/property/:id — property info + check direct booking enabled
+  app.get("/api/public/book/property/:id", async (req, res) => {
+    try {
+      const propertyId = parseInt(req.params.id);
+      if (isNaN(propertyId)) return res.status(400).json({ message: "Invalid property ID" });
+      const info = await getBookingProperty(propertyId);
+      res.json(info);
+    } catch (err: any) {
+      res.status(err.status ?? 500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/public/book/rooms?propertyId=X — room types available at property
+  app.get("/api/public/book/rooms", async (req, res) => {
+    try {
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (isNaN(propertyId)) return res.status(400).json({ message: "propertyId is required" });
+      const rooms = await getPublicRooms(propertyId);
+      res.json(rooms);
+    } catch (err: any) {
+      res.status(err.status ?? 500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/public/book/availability?propertyId=X&checkIn=YYYY-MM-DD&checkOut=YYYY-MM-DD&guests=N
+  app.get("/api/public/book/availability", async (req, res) => {
+    try {
+      const propertyId = parseInt(req.query.propertyId as string);
+      const checkIn = req.query.checkIn as string;
+      const checkOut = req.query.checkOut as string;
+      const guests = req.query.guests ? parseInt(req.query.guests as string) : undefined;
+      if (isNaN(propertyId) || !checkIn || !checkOut) {
+        return res.status(400).json({ message: "propertyId, checkIn, checkOut are required" });
+      }
+      const available = await getPublicAvailability(propertyId, checkIn, checkOut, guests);
+      res.json(available);
+    } catch (err: any) {
+      res.status(err.status ?? 500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/public/book/bookings — create a pending booking (hold for 15 min)
+  app.post("/api/public/book/bookings", publicBookingLimiter, async (req, res) => {
+    try {
+      const {
+        propertyId, roomType, checkIn, checkOut, numberOfGuests,
+        bedsRequested, guestName, guestPhone, guestEmail, specialRequests, mealPlan,
+      } = req.body;
+      if (!propertyId || !roomType || !checkIn || !checkOut || !numberOfGuests || !guestName || !guestPhone) {
+        return res.status(400).json({ message: "propertyId, roomType, checkIn, checkOut, numberOfGuests, guestName, guestPhone are required" });
+      }
+      const result = await createWebsiteBooking({
+        propertyId: parseInt(propertyId),
+        roomType, checkIn, checkOut,
+        numberOfGuests: parseInt(numberOfGuests),
+        bedsRequested: bedsRequested ? parseInt(bedsRequested) : undefined,
+        guestName, guestPhone, guestEmail, specialRequests, mealPlan,
+      });
+      res.status(201).json(result);
+    } catch (err: any) {
+      res.status(err.status ?? 500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/public/book/bookings/:token/pay — create Razorpay payment link
+  app.post("/api/public/book/bookings/:token/pay", publicBookingLimiter, async (req, res) => {
+    try {
+      const { token } = req.params;
+      if (!token || token.length < 32) return res.status(400).json({ message: "Invalid booking token" });
+      const result = await initiateWebsitePayment(token);
+      res.json(result);
+    } catch (err: any) {
+      res.status(err.status ?? 500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/public/book/bookings/:token — get booking status by token
+  app.get("/api/public/book/bookings/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      if (!token || token.length < 32) return res.status(400).json({ message: "Invalid booking token" });
+      const booking = await getWebsiteBookingByToken(token);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+      res.json(booking);
+    } catch (err: any) {
+      res.status(err.status ?? 500).json({ message: err.message });
+    }
+  });
+
+  // DELETE /api/public/book/bookings/:token — cancel a pending hold
+  app.delete("/api/public/book/bookings/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      if (!token || token.length < 32) return res.status(400).json({ message: "Invalid booking token" });
+      await cancelWebsiteBookingHold(token);
+      res.json({ message: "Booking cancelled" });
+    } catch (err: any) {
+      res.status(err.status ?? 500).json({ message: err.message });
     }
   });
 
@@ -7654,6 +7780,38 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       if ((eventType === "payment_link.paid" || status === "paid") && reference_id) {
         console.log(`[RazorPay Webhook] Processing PAID status for reference_id: ${reference_id}`);
         
+        // ── WEBSITE DIRECT BOOKING PAYMENT ───────────────────────────────────
+        if (reference_id.startsWith("WEB-")) {
+          const token = reference_id.slice(4); // strip "WEB-"
+          console.log(`[RazorPay Webhook] Website booking payment received, token: ${token}`);
+          try {
+            const webBooking = await getWebsiteBookingByToken(token);
+            if (webBooking && webBooking.status !== "confirmed") {
+              const amountPaid = amount ? (amount / 100) : 0;
+              // Confirm the booking
+              await db.update(bookings).set({
+                status: "confirmed",
+                advanceAmount: String(amountPaid),
+                advancePaymentStatus: "paid",
+                advancePaymentMethod: "online",
+              } as any).where(eq(bookings.id, webBooking.bookingId));
+              storage.invalidateBookingsCache?.();
+              console.log(`[RazorPay Webhook] Website booking #${webBooking.bookingId} confirmed (token=${token}, amount=₹${amountPaid})`);
+
+              // Trigger AioSell inventory sync
+              try {
+                const { syncWithRetry } = await import("./aiosell");
+                await autoSyncInventoryForProperty(webBooking.propertyId, { triggerBookingId: webBooking.bookingId });
+              } catch (syncErr: any) {
+                console.warn(`[RazorPay Webhook] AioSell sync failed for website booking #${webBooking.bookingId}:`, syncErr.message);
+              }
+            }
+          } catch (webErr: any) {
+            console.error(`[RazorPay Webhook] Website booking confirmation failed (token=${token}):`, webErr.message);
+          }
+          return res.json({ received: true });
+        }
+
         // ── ENQUIRY PAYMENT ─────────────────────────────────────────────────
         if (reference_id.startsWith("enquiry_")) {
           const enquiryMatch = reference_id.match(/enquiry_(\d+)_/);
@@ -26553,6 +26711,9 @@ Respond ONLY with valid JSON (no markdown, no extra text):
 
   // Start kitchen-acceptance escalation cron (Phase: second-level alert)
   startKitchenAcceptanceEscalationJob();
+
+  // Start direct booking hold expiry cron (expires pending_payment holds every 5 min)
+  startHoldExpiryCron();
 
   const httpServer = createServer(app);
   return httpServer;

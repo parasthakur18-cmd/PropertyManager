@@ -146,6 +146,8 @@ export const properties = pgTable("properties", {
   // (rooms, bookings, housekeeping, channel manager, etc.) and surface
   // a slimmer restaurant-only sidebar for the staff assigned to them.
   propertyType: varchar("property_type", { length: 20 }).notNull().default("hotel"),
+  directBookingEnabled: boolean("direct_booking_enabled").notNull().default(false),
+  directBookingCorsOrigin: text("direct_booking_cors_origin"),
 });
 
 export const insertPropertySchema = createInsertSchema(properties).omit({
@@ -288,6 +290,9 @@ export const bookings = pgTable("bookings", {
   otaSyncStatus: varchar("ota_sync_status", { length: 20 }), // 'synced' | 'pending' | 'failed' | null (null = no AioSell configured)
   otaLastSyncAt: timestamp("ota_last_sync_at"),
   otaSyncError: text("ota_sync_error"),
+  // Direct booking engine — website-initiated bookings
+  websiteBookingToken: varchar("website_booking_token", { length: 64 }).unique(),
+  paymentHoldExpiresAt: timestamp("payment_hold_expires_at"),
 });
 
 export const insertBookingSchema = createInsertSchema(bookings).omit({

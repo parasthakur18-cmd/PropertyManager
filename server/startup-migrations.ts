@@ -1195,6 +1195,23 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       }
     },
   },
+  {
+    name: "add_direct_booking_fields",
+    async run() {
+      if (!(await columnExists("bookings", "website_booking_token"))) {
+        await runRaw(`ALTER TABLE bookings ADD COLUMN website_booking_token VARCHAR(64) UNIQUE`);
+      }
+      if (!(await columnExists("bookings", "payment_hold_expires_at"))) {
+        await runRaw(`ALTER TABLE bookings ADD COLUMN payment_hold_expires_at TIMESTAMP`);
+      }
+      if (!(await columnExists("properties", "direct_booking_enabled"))) {
+        await runRaw(`ALTER TABLE properties ADD COLUMN direct_booking_enabled BOOLEAN NOT NULL DEFAULT false`);
+      }
+      if (!(await columnExists("properties", "direct_booking_cors_origin"))) {
+        await runRaw(`ALTER TABLE properties ADD COLUMN direct_booking_cors_origin TEXT`);
+      }
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {

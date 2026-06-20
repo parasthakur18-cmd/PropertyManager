@@ -27,6 +27,7 @@ import GuestSelfCheckin from "@/pages/guest-self-checkin";
 import GuestPreBill from "@/pages/guest-prebill";
 import Menu from "@/pages/menu";
 import CustomerMenu from "@/pages/customer-menu";
+import BookEngine from "@/pages/book-engine";
 
 // Lazy — only loaded when the user navigates to that page
 const Dashboard = lazy(() => import("@/pages/dashboard"));
@@ -153,6 +154,7 @@ function Router({ showDashboard }: { showDashboard: boolean }) {
     <Suspense fallback={<PageLoader />}>
     <Switch>
       {/* Public Routes - No Auth Required */}
+      <Route path="/book" component={BookEngine} />
       <Route path="/menu" component={Menu} />
       <Route path="/customer-menu" component={CustomerMenu} />
       <Route path="/qr-codes" component={QRCodes} />
@@ -369,6 +371,7 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
         '/verify-otp', '/reset-password', '/accept-invite', '/report-issue',
         '/menu', '/customer-menu', '/qr-codes',
         '/guest-self-checkin', '/guest/prebill',
+        '/book',
         '/admin-portal', '/super-admin-login', '/super-admin',
         '/features', '/security', '/about', '/blog', '/contact',
         '/pricing', '/onboarding', '/faq', '/terms', '/privacy',

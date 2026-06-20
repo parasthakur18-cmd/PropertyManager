@@ -52,3 +52,16 @@ export const strictLimiter = rateLimit({
   legacyHeaders: false,
   message: { message: "Too many requests to this endpoint, please try again later." },
 });
+
+/**
+ * Public booking engine limiter — applied to unauthenticated booking creation endpoints.
+ * Strict per-IP: 20 booking attempts per 15 min window to prevent spam/abuse.
+ */
+export const publicBookingLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many booking requests. Please wait a few minutes and try again." },
+});

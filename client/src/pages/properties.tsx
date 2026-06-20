@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, MapPin, Phone, Mail, Edit, Trash2, Download, PowerOff, Power, ShieldAlert, Building2 } from "lucide-react";
+import { Plus, MapPin, Phone, Mail, Edit, Trash2, Download, PowerOff, Power, ShieldAlert, Building2, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -14,6 +14,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { insertPropertySchema, type InsertProperty, type Property } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 
 export default function Properties() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -43,6 +44,8 @@ export default function Properties() {
       contactPhone: "",
       monthlyRent: "0",
       isActive: true,
+      directBookingEnabled: false,
+      directBookingCorsOrigin: "",
     },
   });
 
@@ -135,6 +138,8 @@ export default function Properties() {
       contactPhone: property.contactPhone || "",
       monthlyRent: property.monthlyRent || "0",
       isActive: property.isActive ?? true,
+      directBookingEnabled: (property as any).directBookingEnabled ?? false,
+      directBookingCorsOrigin: (property as any).directBookingCorsOrigin || "",
     });
     setIsDialogOpen(true);
   };
@@ -337,6 +342,54 @@ export default function Properties() {
                     </FormItem>
                   )}
                 />
+                {/* Direct Booking Section */}
+                <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    <Globe className="h-4 w-4 text-teal-600" />
+                    <span className="font-medium text-sm">Direct Booking Engine</span>
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="directBookingEnabled"
+                    render={({ field }) => (
+                      <FormItem className="flex items-center justify-between">
+                        <div>
+                          <FormLabel>Enable direct booking</FormLabel>
+                          <p className="text-xs text-muted-foreground">Allow guests to book from your property website</p>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={!!field.value}
+                            onCheckedChange={field.onChange}
+                            data-testid="switch-direct-booking-enabled"
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="directBookingCorsOrigin"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Allowed website origin (CORS)</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="https://yourwebsite.com"
+                            {...field}
+                            value={field.value || ""}
+                            data-testid="input-direct-booking-cors"
+                          />
+                        </FormControl>
+                        <p className="text-xs text-muted-foreground">
+                          Your property website URL. Leave blank to allow all origins.
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
                 <DialogFooter>
                   <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-property">
                     {createMutation.isPending ? "Creating..." : updateMutation.isPending ? "Saving..." : editingProperty ? "Save Changes" : "Create Property"}
