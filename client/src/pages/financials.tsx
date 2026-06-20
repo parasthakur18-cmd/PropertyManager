@@ -12,7 +12,7 @@ import { format } from "date-fns";
 
 export default function Financials() {
   const currentYear = new Date().getFullYear();
-  const [selectedProperty, setSelectedProperty] = useState<number | null>(null);
+  const [selectedProperty, setSelectedProperty] = useState<string>("all");
   const [startDate, setStartDate] = useState(`${currentYear}-01-01`);
   const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
   const { toast } = useToast();
@@ -46,28 +46,51 @@ export default function Financials() {
     queryKey: ["/api/orders"],
   });
 
+  const selectedPropertyId = selectedProperty !== "all" ? parseInt(selectedProperty) : null;
+
   const { data: financials, isLoading } = useQuery<any>({
     queryKey: ["/api/financials", selectedProperty, startDate, endDate],
     queryFn: async () => {
-      if (!selectedProperty) return null;
-      const url = `/api/financials/${selectedProperty}?startDate=${startDate}&endDate=${endDate}`;
+      if (!selectedPropertyId) return null;
+      const url = `/api/financials/${selectedPropertyId}?startDate=${startDate}&endDate=${endDate}`;
       const response = await fetch(url);
       if (!response.ok) throw new Error("Failed to fetch financials");
       return response.json();
     },
-    enabled: !!selectedProperty,
+    enabled: !!selectedPropertyId,
   });
 
   const getPropertyName = (propertyId: number) => {
     return properties.find(p => p.id === propertyId)?.name || "Unknown";
   };
 
-  // Export all bookings to CSV with complete financial data (Admin-only)
+  // Export bookings to CSV — respects current property + date filters
   const exportToCSV = () => {
     if (!bookings || bookings.length === 0) {
       toast({
         title: "No Data",
         description: "There are no bookings to export",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    const filtered = bookings.filter((b) => {
+      const checkIn = new Date(b.checkInDate);
+      const inDateRange = checkIn >= start && checkIn <= end;
+      const inProperty = selectedProperty === "all" || b.propertyId === selectedPropertyId;
+      return inDateRange && inProperty;
+    });
+
+    if (filtered.length === 0) {
+      toast({
+        title: "No Data",
+        description: "No bookings match the selected property and date range",
         variant: "destructive",
       });
       return;
@@ -114,8 +137,8 @@ export default function Financials() {
       "Created By",
     ];
 
-    // Build CSV rows
-    const rows = bookings.map((booking) => {
+    // Build CSV rows — using filtered set (property + date range applied)
+    const rows = filtered.map((booking) => {
       const property = properties?.find(p => p.id === booking.propertyId);
       const guest = guests?.find(g => g.id === booking.guestId);
       const agent = travelAgents?.find(a => a.id === booking.travelAgentId);
@@ -222,13 +245,14 @@ export default function Financials() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `hostezee-bookings-financial-${format(new Date(), "yyyy-MM-dd-HHmm")}.csv`;
+    const propLabel = selectedProperty === "all" ? "all-properties" : (properties.find(p => p.id === selectedPropertyId)?.name || selectedProperty).replace(/\s+/g, "-").toLowerCase();
+    link.download = `hostezee-financial-${propLabel}-${startDate}-to-${endDate}.csv`;
     link.click();
     URL.revokeObjectURL(url);
     
     toast({
       title: "Export Successful",
-      description: `${bookings.length} bookings with complete financial data exported`,
+      description: `${filtered.length} bookings exported (${startDate} → ${endDate})`,
     });
   };
 
@@ -259,13 +283,14 @@ export default function Financials() {
               <div className="space-y-2">
                 <Label>Property</Label>
                 <Select
-                  onValueChange={(value) => setSelectedProperty(parseInt(value))}
-                  value={selectedProperty?.toString()}
+                  onValueChange={(value) => setSelectedProperty(value)}
+                  value={selectedProperty}
                 >
                   <SelectTrigger data-testid="select-property">
                     <SelectValue placeholder="Select property" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="all">All Properties</SelectItem>
                     {properties.map((property) => (
                       <SelectItem key={property.id} value={property.id.toString()}>
                         {property.name}
@@ -338,13 +363,14 @@ export default function Financials() {
           </CardContent>
         </Card>
 
-        {!selectedProperty ? (
+        {selectedProperty === "all" ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <IndianRupee className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Select a property</h3>
+              <h3 className="text-lg font-semibold mb-2">Select a specific property</h3>
               <p className="text-muted-foreground text-center">
-                Choose a property from the filter above to view its financial report
+                Choose a property from the filter above to view its detailed P&L report.<br />
+                To export data for all properties, use the <strong>Export Complete Data</strong> button.
               </p>
             </CardContent>
           </Card>
