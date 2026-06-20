@@ -41,6 +41,7 @@ import {
   TrendingUp as TrendingUpIcon,
   Users2,
   CalendarPlus,
+  LineChart,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -120,6 +121,7 @@ const adminStaffItems = [
 ];
 
 const adminAnalyticsItems = [
+  { title: "Owner BI Dashboard", url: "/owner-dashboard", icon: LineChart },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
   { title: "Performance", url: "/performance", icon: BarChart3 },
 ];

@@ -1,0 +1,561 @@
+HOSTEZEE OWNER BUSINESS INTELLIGENCE DASHBOARD
+PHASE 1 FINAL BUILD SPECIFICATION
+
+IMPORTANT INSTRUCTIONS
+
+1. Do NOT modify any existing reports.
+2. Do NOT break any existing dashboard.
+3. Build as a completely separate Owner BI Module.
+4. Reuse existing APIs wherever possible.
+5. Create new APIs only when required.
+6. Complete backend APIs first.
+7. Then build frontend dashboards.
+8. All reports must support global filters.
+
+==================================================
+PRE-DEVELOPMENT VALIDATION
+==========================
+
+Before building, validate:
+
+* Total Rooms per Property
+* Saleable Rooms
+* Rooms Out Of Order
+* Room Types
+* Guest Nights
+* Booking Sources
+* Revenue Sources
+* Food Revenue
+* Pending Payments
+* Cancellation Data
+* No Show Data
+
+Generate a validation report showing:
+
+Metric
+Database Table
+Available
+Calculation Logic
+Confidence Level
+
+==================================================
+GLOBAL FILTER SYSTEM
+====================
+
+Every dashboard must support:
+
+Date Filters
+
+* Today
+* Yesterday
+* Last 7 Days
+* Last 30 Days
+* This Month
+* Last Month
+* This Quarter
+* This Year
+* Financial Year
+* Custom Date Range
+
+Additional Filters
+
+* Property
+* Room Type
+* Room Number
+* Booking Source
+* OTA
+* Walk-in
+* Website
+* Corporate
+* Booking Status
+
+==================================================
+DASHBOARD 1
+EXECUTIVE OWNER DASHBOARD
+=========================
+
+Top KPI Cards
+
+Revenue Metrics
+
+* Total Revenue
+* Room Revenue
+* Food Revenue
+* Other Revenue
+
+Booking Metrics
+
+* Total Bookings
+* Checked In
+* Checked Out
+* Cancelled
+* No Show
+
+Room Metrics
+
+* Total Rooms
+* Saleable Rooms
+* Occupied Room Nights
+* Available Room Nights
+* Unsold Room Nights
+
+Performance Metrics
+
+* ARR
+* ADR
+* Occupancy %
+* RevPAR
+
+Source Metrics
+
+* OTA Revenue
+* Walk-in Revenue
+* Website Revenue
+* Corporate Revenue
+
+Recovery Metrics
+
+* Outstanding Revenue
+* Pending Collections
+* Revenue Leakage
+* Cancellation Loss
+* No Show Loss
+
+Forecast Metrics
+
+* Forecast Month End Revenue
+* Target Achievement %
+
+==================================================
+DASHBOARD 2
+PROPERTY SCORECARD
+==================
+
+Property Wise Performance Table
+
+Property
+
+Total Revenue
+
+Room Revenue
+
+Food Revenue
+
+Other Revenue
+
+Bookings
+
+Guest Nights
+
+Total Rooms
+
+Occupied Room Nights
+
+Available Room Nights
+
+Unsold Room Nights
+
+Occupancy %
+
+ARR
+
+ADR
+
+RevPAR
+
+OTA Revenue
+
+Walk-in Revenue
+
+Outstanding Revenue
+
+Cancelled Revenue
+
+Average Stay Length
+
+Target Revenue
+
+Actual Revenue
+
+Target Achievement %
+
+Net Profit
+
+Profit Margin %
+
+Property Ranking
+
+Highest Revenue Property
+
+Highest ARR Property
+
+Highest Occupancy Property
+
+Highest RevPAR Property
+
+Highest Food Revenue Property
+
+Highest Walk-in Revenue Property
+
+Highest Profit Margin Property
+
+==================================================
+DASHBOARD 3
+MONTHLY SALES DASHBOARD
+=======================
+
+Month Wise Report
+
+Month
+
+Total Revenue
+
+Room Revenue
+
+Food Revenue
+
+Other Revenue
+
+OTA Revenue
+
+Walk-in Revenue
+
+Bookings
+
+Guest Nights
+
+Occupancy %
+
+ARR
+
+RevPAR
+
+Target Revenue
+
+Achievement %
+
+Growth Analytics
+
+Month-on-Month Revenue Growth %
+
+Month-on-Month Occupancy Growth %
+
+Month-on-Month ARR Growth %
+
+Year-on-Year Revenue Growth %
+
+Charts
+
+Revenue Trend
+
+Occupancy Trend
+
+ARR Trend
+
+Food Revenue Trend
+
+OTA Revenue Trend
+
+==================================================
+DASHBOARD 4
+OTA VS WALK-IN ANALYTICS
+========================
+
+Source Wise Breakdown
+
+Source
+
+Bookings
+
+Revenue
+
+Room Nights
+
+ARR
+
+ADR
+
+Average Stay
+
+Revenue Share %
+
+Booking Share %
+
+Commission %
+
+Commission Amount
+
+Net Revenue
+
+Sources
+
+Booking.com
+
+MakeMyTrip
+
+Goibibo
+
+Agoda
+
+Airbnb
+
+Walk-in
+
+Website
+
+Corporate
+
+Direct
+
+Ranking
+
+Highest Revenue Source
+
+Highest ARR Source
+
+Highest Conversion Source
+
+Highest Net Revenue Source
+
+==================================================
+DASHBOARD 5
+REVENUE LEAKAGE DASHBOARD
+=========================
+
+MOST IMPORTANT DASHBOARD
+
+Track every rupee lost.
+
+Section A
+
+Cancelled Revenue
+
+* Cancelled Bookings
+* Cancelled Revenue
+* Property Wise Loss
+
+Section B
+
+No Show Revenue
+
+* No Show Count
+* No Show Revenue Lost
+
+Section C
+
+Outstanding Revenue
+
+* Total Outstanding
+* Property Wise Outstanding
+* Aging Report
+
+0–7 Days
+8–15 Days
+16–30 Days
+30+ Days
+
+Section D
+
+Check-In Done But No Check-Out
+
+Audit List
+
+Section E
+
+Booking Created But Never Checked In
+
+Potential Revenue Loss
+
+Section F
+
+Unsold Inventory Analysis
+
+Property
+
+Available Room Nights
+
+Occupied Room Nights
+
+Unsold Room Nights
+
+Occupancy %
+
+ARR
+
+Potential Revenue Loss
+
+Formula:
+
+Unsold Room Nights × ARR
+
+Section G
+
+Opportunity Revenue
+
+Potential Revenue From Vacant Rooms
+
+Potential Revenue From Low Occupancy
+
+Recovery Potential
+
+==================================================
+DASHBOARD 6
+OWNER DAILY SNAPSHOT
+====================
+
+Most Important Owner Screen
+
+Yesterday
+
+Revenue
+
+Bookings
+
+Occupancy
+
+ARR
+
+Food Revenue
+
+Today
+
+Expected Check-ins
+
+Expected Check-outs
+
+Pending Payments
+
+This Month
+
+Revenue
+
+Occupancy
+
+ARR
+
+Food Revenue
+
+Month-End Forecast
+
+Revenue Target
+
+Revenue Forecast
+
+Gap To Target
+
+Achievement %
+
+Example
+
+Target = ₹8,00,000
+
+Forecast = ₹7,20,000
+
+Gap = ₹80,000
+
+Achievement = 90%
+
+==================================================
+DASHBOARD 7
+REVENUE FORECAST CALCULATOR
+===========================
+
+Inputs
+
+Property
+
+Total Rooms
+
+ARR
+
+Occupancy %
+
+Days
+
+Outputs
+
+Expected Revenue
+
+Examples
+
+30% Occupancy
+
+40% Occupancy
+
+50% Occupancy
+
+60% Occupancy
+
+70% Occupancy
+
+80% Occupancy
+
+90% Occupancy
+
+Formula
+
+Rooms × Occupancy × ARR × Days
+
+==================================================
+OWNER AI INSIGHTS
+=================
+
+Generate automatic insights.
+
+Examples:
+
+Woodpecker contributed 44% of total revenue.
+
+Blue Mont generated highest food revenue.
+
+TreeHouse has highest ARR.
+
+Forest Pinnacle occupancy dropped by 12%.
+
+OTA dependency exceeds 75%.
+
+Potential revenue loss from vacant inventory is ₹3.5 lakh.
+
+Outstanding collections exceed ₹2 lakh.
+
+Generate recommendations automatically.
+
+==================================================
+NEW APIs REQUIRED
+=================
+
+GET /api/owner/dashboard
+
+GET /api/owner/property-performance
+
+GET /api/owner/monthly-sales
+
+GET /api/owner/ota-analysis
+
+GET /api/owner/revenue-leakage
+
+GET /api/owner/daily-snapshot
+
+GET /api/owner/revenue-forecast
+
+==================================================
+FINAL REQUIREMENT
+=================
+
+Before coding:
+
+1. Verify every calculation.
+2. Verify room inventory counts.
+3. Verify occupancy formula.
+4. Verify ARR formula.
+5. Verify RevPAR formula.
+6. Verify room revenue and food revenue totals against existing reports.
+
+Only proceed once all calculations reconcile with current Hostezee reports.
+
+Build backend APIs first.
+
+Then frontend dashboards.
+
+Do not touch any existing reports, routes or production logic.
+Create this as a separate Owner BI module accessible only to Super Admin / Owner role.

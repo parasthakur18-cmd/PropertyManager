@@ -8181,6 +8181,146 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  // ══════════════════════════════════════════════════════════════════════
+  // OWNER BI MODULE — /api/owner/*
+  // Completely separate from all existing reports/dashboards.
+  // Accessible to super-admin and admin only.
+  // ══════════════════════════════════════════════════════════════════════
+  {
+    const {
+      getOwnerDashboard,
+      getPropertyPerformance,
+      getMonthlySales,
+      getOtaAnalysis,
+      getRevenueLeakage,
+      getDailySnapshot,
+      getRevenueForecast,
+      getOwnerInsights,
+    } = await import("./owner-bi");
+
+    const ownerAuthCheck = (req: any, res: any) => {
+      const user = req.user;
+      if (!user) { res.status(401).json({ message: "Unauthorized" }); return false; }
+      if (user.role !== "super-admin" && user.role !== "admin") {
+        res.status(403).json({ message: "Owner BI is restricted to admin and super-admin users." });
+        return false;
+      }
+      return true;
+    };
+
+    const parseFilters = (req: any) => {
+      const { startDate, endDate, propertyIds } = req.query;
+      const ids = propertyIds
+        ? String(propertyIds).split(",").map(Number).filter(Boolean)
+        : [];
+      return {
+        startDate: String(startDate || new Date().toISOString().split("T")[0]),
+        endDate: String(endDate || new Date().toISOString().split("T")[0]),
+        propertyIds: ids.length ? ids : undefined,
+      };
+    };
+
+    app.get("/api/owner/dashboard", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const data = await getOwnerDashboard(parseFilters(req));
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/dashboard", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+
+    app.get("/api/owner/property-performance", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const data = await getPropertyPerformance(parseFilters(req));
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/property-performance", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+
+    app.get("/api/owner/monthly-sales", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const data = await getMonthlySales(parseFilters(req));
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/monthly-sales", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+
+    app.get("/api/owner/ota-analysis", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const data = await getOtaAnalysis(parseFilters(req));
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/ota-analysis", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+
+    app.get("/api/owner/revenue-leakage", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const data = await getRevenueLeakage(parseFilters(req));
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/revenue-leakage", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+
+    app.get("/api/owner/daily-snapshot", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const { propertyIds } = req.query;
+        const ids = propertyIds
+          ? String(propertyIds).split(",").map(Number).filter(Boolean)
+          : undefined;
+        const data = await getDailySnapshot({
+          startDate: new Date().toISOString().split("T")[0],
+          endDate: new Date().toISOString().split("T")[0],
+          propertyIds: ids,
+        });
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/daily-snapshot", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+
+    app.get("/api/owner/revenue-forecast", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const totalRooms = parseInt(String(req.query.totalRooms || "10"));
+        const arr = parseFloat(String(req.query.arr || "3000"));
+        const days = parseInt(String(req.query.days || "30"));
+        const data = getRevenueForecast(totalRooms, arr, days);
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/revenue-forecast", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+
+    app.get("/api/owner/insights", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const data = await getOwnerInsights(parseFilters(req));
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/insights", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+  }
+  // ── End of Owner BI Module ────────────────────────────────────────────
+
   // ── Z-Report (end-of-shift summary) ──────────────────────────────────
   // Computes a daily restaurant summary entirely from existing orders rows
   // (no schema changes). Filters: orderType in ('restaurant','room'),

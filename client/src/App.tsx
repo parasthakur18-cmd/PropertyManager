@@ -98,6 +98,7 @@ const AdvancedFeatures = lazy(() => import("@/pages/advanced-features"));
 const FeatureSettings = lazy(() => import("@/pages/feature-settings"));
 const WhatsAppTemplates = lazy(() => import("@/pages/whatsapp-templates"));
 const AnalyticsChat = lazy(() => import("@/pages/analytics-chat"));
+const OwnerDashboard = lazy(() => import("@/pages/owner-dashboard"));
 import { ErrorBoundary } from "@/components/error-boundary";
 
 import { CompletionNotifications } from "@/components/completion-notifications";
@@ -223,6 +224,7 @@ function Router({ showDashboard }: { showDashboard: boolean }) {
           <Route path="/services-report" component={ServicesReport} />
           <Route path="/monthly-report" component={MonthlyReport} />
           <Route path="/analytics" component={Analytics} />
+          <Route path="/owner-dashboard" component={OwnerDashboard} />
           <Route path="/analytics-chat" component={AnalyticsChat} />
           <Route path="/salaries" component={Salaries} />
           <Route path="/attendance" component={Attendance} />
