@@ -1,0 +1,336 @@
+You are a Senior Hospitality Business Intelligence Architect and Revenue Management Expert.
+
+Your task is to enhance the existing Hostezee Owner Business Intelligence (Owner BI) module and transform it into a true owner-level decision-making dashboard.
+
+IMPORTANT RULES:
+
+* Do not break any existing functionality.
+* Keep all analytics read-only.
+* Reuse existing booking, billing, travel agent, OTA, property, room, and financial data wherever possible.
+* Follow existing Owner BI architecture, UI patterns, filters, and API conventions.
+* All tabs must respect Property Filter and Date Range Filter.
+* Mobile responsive.
+* Production-safe implementation only.
+
+======================================================
+PHASE 1: SOURCE INTELLIGENCE
+============================
+
+Create a new tab:
+
+Source Intelligence
+
+Goal:
+Answer the question:
+
+"Where is my revenue actually coming from?"
+
+Global Source Filter:
+
+* All Sources
+* OTA
+* Walk-in
+* Direct
+* Travel Agent
+* Group Booking
+* Corporate
+* Website
+* Repeat Guest
+* Other
+
+Metrics:
+
+* Revenue
+* Bookings
+* Room Nights
+* ARR
+* Occupancy Contribution
+* Revenue Contribution %
+* Source Share %
+
+Visuals:
+
+1. Revenue Mix Donut Chart
+2. Source Contribution Table
+3. Monthly Source Trend Chart
+4. Source Dependency Meter
+
+======================================================
+PHASE 2: TRAVEL AGENT INTELLIGENCE
+==================================
+
+Create a dedicated section:
+
+Travel Agent Intelligence
+
+Metrics:
+
+* Total Revenue
+* Total Bookings
+* Total Room Nights
+* ARR
+* Avg Booking Value
+* Cancellation %
+* Repeat Business %
+* Last Booking Date
+
+Leaderboard:
+
+Top Travel Agents Ranked By:
+
+* Revenue
+* Nights
+* ARR
+* Repeat Business
+
+AI Insight Example:
+
+"Top 3 agents contribute 71% of travel agent revenue. Business is highly concentrated."
+
+Flag:
+
+* Inactive agents
+* Declining agents
+* High-value agents
+
+======================================================
+PHASE 3: GROUP BOOKING INTELLIGENCE
+===================================
+
+Group bookings are one of the largest revenue contributors.
+
+Build:
+
+Group Booking Intelligence
+
+Metrics:
+
+* Total Group Revenue
+* Total Group Nights
+* Avg Group Size
+* Avg Stay Duration
+* Group ARR
+* Group Contribution %
+
+Analysis:
+
+* Top Group Organizers
+* Top Group Months
+* Repeat Groups
+* Largest Group
+* Highest Revenue Group
+
+AI Insight Example:
+
+"62% of group revenue comes from only 4 organizers."
+
+======================================================
+PHASE 4: PROFITABILITY ANALYSIS
+===============================
+
+Revenue alone is misleading.
+
+Build:
+
+Source Profitability Analysis
+
+For each source show:
+
+* Gross Revenue
+* OTA Commission
+* Travel Agent Commission
+* Discounts
+* Net Revenue
+* Profitability %
+
+Table:
+
+Source | Gross | Commission | Net | Profit %
+
+Highlight:
+
+* Most Profitable Source
+* Least Profitable Source
+
+AI Insight Example:
+
+"OTA generates 28% revenue but only 19% net profit due to commissions."
+
+======================================================
+PHASE 5: REVENUE DRIVERS TAB
+============================
+
+Create a new tab:
+
+Revenue Drivers
+
+Rank everything contributing to revenue.
+
+Top:
+
+* Travel Agent
+* OTA
+* Group Organizer
+* Corporate Client
+* Room Type
+* Month
+* Booking Source
+
+Display:
+
+Revenue
+Bookings
+Nights
+ARR
+Contribution %
+
+Goal:
+
+Immediately answer:
+
+"What exactly generated my revenue?"
+
+======================================================
+PHASE 6: OWNER EXECUTIVE SUMMARY
+================================
+
+Create Executive Summary Cards:
+
+1. Highest Revenue Source
+2. Most Profitable Source
+3. Fastest Growing Source
+4. Best Travel Agent
+5. Best Group Organizer
+6. Highest ARR Room Type
+7. Revenue At Risk
+8. Revenue Opportunity
+
+======================================================
+PHASE 7: SOURCE DEPENDENCY RISK
+===============================
+
+Build Source Risk Score.
+
+Example:
+
+If one source contributes:
+
+> 50%
+> → High Risk
+
+30%-50%
+→ Medium Risk
+
+<30%
+→ Healthy
+
+Show:
+
+🟢 Healthy
+🟡 Moderate Risk
+🔴 High Dependency
+
+AI Example:
+
+"68% revenue comes from Travel Agents. Business has channel concentration risk."
+
+======================================================
+PHASE 8: AI EXECUTIVE BRIEF
+===========================
+
+Add:
+
+Generate Executive Brief
+
+AI receives:
+
+* Revenue Mix
+* Source Trends
+* Travel Agent Data
+* Group Data
+* Profitability Data
+* Revenue Drivers
+
+Return structured report:
+
+1. What Happened
+2. What Changed
+3. What's Working
+4. Risks
+5. Opportunities
+6. Recommended Actions
+
+Example:
+
+Business Summary:
+
+* Occupancy is 22%.
+* Travel Agents contribute 58% revenue.
+* OTA contribution dropped 12%.
+* Direct bookings increased 18%.
+
+Risks:
+
+* Revenue dependency on Travel Agents.
+
+Opportunities:
+
+* OTA inventory underutilized.
+* Direct channel growth possible.
+
+Actions:
+
+1. Increase OTA visibility.
+2. Re-engage inactive agents.
+3. Improve direct booking conversion.
+4. Optimize weekend pricing.
+
+======================================================
+PHASE 9: ACTION CENTER
+======================
+
+Create an actionable owner section.
+
+Generate recommendations automatically.
+
+Examples:
+
+Revenue:
+
+* Increase Deluxe Room rates by 8%.
+
+Occupancy:
+
+* Focus OTA promotions on weekdays.
+
+Travel Agents:
+
+* Contact Agent XYZ (no bookings for 45 days).
+
+Groups:
+
+* Follow up with Organizer ABC.
+
+Every recommendation must show:
+
+Expected Impact
+Priority
+Reason
+
+======================================================
+FINAL GOAL
+==========
+
+The Owner BI dashboard should not only report numbers.
+
+It should answer:
+
+1. Where is my revenue coming from?
+2. What is driving growth?
+3. What is hurting profitability?
+4. Which travel agents matter most?
+5. How important are group bookings?
+6. Where is the biggest opportunity?
+7. What actions should I take next?
+
+Build this as a world-class hospitality business intelligence platform comparable to professional hotel revenue management systems while remaining lightweight, fast, and production safe.

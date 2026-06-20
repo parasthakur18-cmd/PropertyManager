@@ -1345,6 +1345,13 @@ function CeoSummaryDashboard({ filters }: { filters: FilterState }) {
     staleTime: 60000,
   });
 
+  const siQP = buildQP(filters);
+  const { data: si } = useQuery<any>({
+    queryKey: ["/api/owner/source-intelligence", filters],
+    queryFn: () => fetch(`/api/owner/source-intelligence?${siQP}`).then((r) => r.json()),
+    staleTime: 60000,
+  });
+
   const INR_compact = (v: number) => {
     if (!v) return "₹0";
     if (v >= 10000000) return `₹${(v / 10000000).toFixed(1)}Cr`;
@@ -1409,6 +1416,62 @@ function CeoSummaryDashboard({ filters }: { filters: FilterState }) {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Business Intelligence Strip */}
+      {si && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Network className="h-4 w-4 text-primary" />
+            <span className="text-sm font-semibold">Business Intelligence</span>
+            <Badge variant="outline" className="text-xs">Period Snapshot</Badge>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Top Revenue Source */}
+            {si.dependencyRisk?.topSource && (
+              <Card className="border-l-4 border-l-teal-500">
+                <CardContent className="p-3">
+                  <p className="text-xs text-muted-foreground">Top Revenue Source</p>
+                  <p className="text-base font-bold mt-0.5">{si.dependencyRisk.topSource.label}</p>
+                  <p className="text-xs text-muted-foreground">{si.dependencyRisk.topSource.share.toFixed(1)}% of total revenue</p>
+                </CardContent>
+              </Card>
+            )}
+            {/* Channel Risk */}
+            {si.dependencyRisk && (
+              <Card className={`border-l-4 ${si.dependencyRisk.level === "high" ? "border-l-red-500" : si.dependencyRisk.level === "moderate" ? "border-l-amber-500" : "border-l-emerald-500"}`}>
+                <CardContent className="p-3">
+                  <p className="text-xs text-muted-foreground">Channel Dependency Risk</p>
+                  <p className={`text-base font-bold mt-0.5 flex items-center gap-1 ${si.dependencyRisk.level === "high" ? "text-red-600" : si.dependencyRisk.level === "moderate" ? "text-amber-600" : "text-emerald-600"}`}>
+                    {si.dependencyRisk.level === "high" ? "🔴 High Risk" : si.dependencyRisk.level === "moderate" ? "🟡 Moderate" : "🟢 Healthy"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {si.dependencyRisk.level === "high" ? "One channel dominates" : si.dependencyRisk.level === "moderate" ? "Revenue concentrated" : "Well diversified"}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+            {/* Best Travel Agent */}
+            {si.topAgents?.length > 0 && (
+              <Card className="border-l-4 border-l-violet-500">
+                <CardContent className="p-3">
+                  <p className="text-xs text-muted-foreground">Best Travel Agent</p>
+                  <p className="text-base font-bold mt-0.5 truncate">{si.topAgents[0].name}</p>
+                  <p className="text-xs text-muted-foreground">{INR_compact(si.topAgents[0].revenue)} · {si.topAgents[0].revenueSharePct.toFixed(1)}% share</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+          {/* TA concentration warning */}
+          {si.dependencyRisk?.top3TAShare > 70 && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800 dark:text-amber-200">
+                Top 3 travel agents contribute <strong>{si.dependencyRisk.top3TAShare.toFixed(0)}%</strong> of agent revenue. Consider diversifying your agent network.
+              </p>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -1674,32 +1737,41 @@ function OtaPlusCommissionTab({ filters }: { filters: FilterState }) {
                     <TableHead className="text-right">Commission %</TableHead>
                     <TableHead className="text-right">Commission ₹</TableHead>
                     <TableHead className="text-right">Net Revenue</TableHead>
+                    <TableHead className="text-right">Profit %</TableHead>
                     <TableHead className="text-right">ARR</TableHead>
                     <TableHead className="text-right">Share</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rows.map((r: any) => (
-                    <TableRow key={r.source}>
-                      <TableCell className="font-medium capitalize">{r.source || "Unknown"}</TableCell>
-                      <TableCell className="text-right">{r.bookings}</TableCell>
-                      <TableCell className="text-right">{INR(r.grossRevenue)}</TableCell>
-                      <TableCell className="text-right">
-                        <Badge variant="outline" className={`text-xs ${r.commissionPct >= 18 ? "border-red-300 text-red-700" : "border-green-300 text-green-700"}`}>{r.commissionPct}%</Badge>
-                      </TableCell>
-                      <TableCell className="text-right text-red-600">{INR(r.commissionAmount)}</TableCell>
-                      <TableCell className="text-right text-emerald-600 font-medium">{INR(r.netRevenue)}</TableCell>
-                      <TableCell className="text-right">{INR(r.arr)}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <span className="text-xs">{r.revenueShare.toFixed(1)}%</span>
-                          <div className="w-12 h-1.5 rounded-full bg-muted overflow-hidden">
-                            <div className="h-full rounded-full bg-blue-500" style={{ width: `${r.revenueShare}%` }} />
+                  {rows.map((r: any) => {
+                    const profitPct = r.grossRevenue > 0 ? (r.netRevenue / r.grossRevenue) * 100 : 0;
+                    return (
+                      <TableRow key={r.source}>
+                        <TableCell className="font-medium capitalize">{r.source || "Unknown"}</TableCell>
+                        <TableCell className="text-right">{r.bookings}</TableCell>
+                        <TableCell className="text-right">{INR(r.grossRevenue)}</TableCell>
+                        <TableCell className="text-right">
+                          <Badge variant="outline" className={`text-xs ${r.commissionPct >= 18 ? "border-red-300 text-red-700" : "border-green-300 text-green-700"}`}>{r.commissionPct}%</Badge>
+                        </TableCell>
+                        <TableCell className="text-right text-red-600">{INR(r.commissionAmount)}</TableCell>
+                        <TableCell className="text-right text-emerald-600 font-medium">{INR(r.netRevenue)}</TableCell>
+                        <TableCell className="text-right">
+                          <Badge className={`text-xs ${profitPct >= 85 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200" : profitPct >= 75 ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200" : "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200"} border-0`}>
+                            {profitPct.toFixed(1)}%
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">{INR(r.arr)}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <span className="text-xs">{r.revenueShare.toFixed(1)}%</span>
+                            <div className="w-12 h-1.5 rounded-full bg-muted overflow-hidden">
+                              <div className="h-full rounded-full bg-blue-500" style={{ width: `${r.revenueShare}%` }} />
+                            </div>
                           </div>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -2115,6 +2187,53 @@ function SourceIntelligenceTab({ filters }: { filters: FilterState }) {
         </Card>
       )}
 
+      {/* Source Dependency Risk Meter */}
+      {data.dependencyRisk && (
+        <Card className={`border-l-4 ${data.dependencyRisk.level === "high" ? "border-l-red-500 bg-red-50/40 dark:bg-red-950/10" : data.dependencyRisk.level === "moderate" ? "border-l-amber-500 bg-amber-50/40 dark:bg-amber-950/10" : "border-l-emerald-500 bg-emerald-50/30 dark:bg-emerald-950/10"}`}>
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">
+                  {data.dependencyRisk.level === "high" ? "🔴" : data.dependencyRisk.level === "moderate" ? "🟡" : "🟢"}
+                </span>
+                <div>
+                  <p className="text-sm font-semibold">
+                    Source Dependency Risk:&nbsp;
+                    <span className={data.dependencyRisk.level === "high" ? "text-red-700" : data.dependencyRisk.level === "moderate" ? "text-amber-700" : "text-emerald-700"}>
+                      {data.dependencyRisk.level === "high" ? "High" : data.dependencyRisk.level === "moderate" ? "Moderate" : "Healthy"}
+                    </span>
+                  </p>
+                  {data.dependencyRisk.topSource && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      <strong>{data.dependencyRisk.topSource.label}</strong> is your top channel at&nbsp;
+                      <strong>{data.dependencyRisk.topSource.share.toFixed(1)}%</strong> of revenue.&nbsp;
+                      {data.dependencyRisk.level === "high"
+                        ? "High channel concentration — consider diversifying."
+                        : data.dependencyRisk.level === "moderate"
+                        ? "Moderate concentration — grow secondary channels."
+                        : "Good channel diversification."}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {/* Visual share bars */}
+              <div className="flex-1 min-w-[180px] space-y-1.5">
+                {sources.slice(0, 4).map((s: any) => (
+                  <div key={s.category} className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: SOURCE_COLORS[s.category] || "#94A3B8" }} />
+                    <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, s.revenueSharePct)}%`, backgroundColor: SOURCE_COLORS[s.category] || "#94A3B8" }} />
+                    </div>
+                    <span className="text-xs text-muted-foreground w-10 text-right">{s.revenueSharePct.toFixed(0)}%</span>
+                    <span className="text-xs text-muted-foreground w-20 truncate">{s.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* KPI Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
@@ -2225,7 +2344,13 @@ function SourceIntelligenceTab({ filters }: { filters: FilterState }) {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Users className="h-4 w-4 text-purple-500" />Top Travel Agents
+              <Users className="h-4 w-4 text-purple-500" />
+              Top Travel Agents
+              {data.dependencyRisk?.top3TAShare > 0 && (
+                <Badge variant="outline" className="text-xs ml-auto font-normal">
+                  Top 3 = {data.dependencyRisk.top3TAShare.toFixed(0)}% of agent revenue
+                </Badge>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -2235,26 +2360,58 @@ function SourceIntelligenceTab({ filters }: { filters: FilterState }) {
                   <TableHead className="text-xs">#</TableHead>
                   <TableHead className="text-xs">Agent Name</TableHead>
                   <TableHead className="text-xs text-right">Revenue</TableHead>
-                  <TableHead className="text-xs text-right">Room Nights</TableHead>
+                  <TableHead className="text-xs text-right">Nights</TableHead>
                   <TableHead className="text-xs text-right">Bookings</TableHead>
                   <TableHead className="text-xs text-right">ARR</TableHead>
                   <TableHead className="text-xs text-right">Share</TableHead>
+                  <TableHead className="text-xs text-right">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {topAgents.map((a, i) => (
-                  <TableRow key={a.id}>
-                    <TableCell className="text-xs text-muted-foreground py-2">{i + 1}</TableCell>
-                    <TableCell className="text-xs font-medium py-2">{a.name}</TableCell>
-                    <TableCell className="text-xs text-right py-2 font-mono">{fmt(a.revenue)}</TableCell>
-                    <TableCell className="text-xs text-right py-2">{fmtN(a.roomNights)}</TableCell>
-                    <TableCell className="text-xs text-right py-2">{a.bookings}</TableCell>
-                    <TableCell className="text-xs text-right py-2 font-mono">₹{fmtN(Math.round(a.arr))}</TableCell>
-                    <TableCell className="text-xs text-right py-2">
-                      <Badge variant="secondary" className="text-xs">{a.revenueSharePct.toFixed(1)}%</Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {topAgents.map((a, i) => {
+                  const isInactive = a.daysSinceLastBooking != null && a.daysSinceLastBooking > 45;
+                  const isSlow    = !isInactive && a.daysSinceLastBooking != null && a.daysSinceLastBooking > 30;
+                  const isTopVal  = i < 3;
+                  return (
+                    <TableRow key={a.id} className={isInactive ? "opacity-60" : ""}>
+                      <TableCell className="text-xs text-muted-foreground py-2">{i + 1}</TableCell>
+                      <TableCell className="text-xs font-medium py-2">
+                        <div className="flex flex-col gap-0.5">
+                          <span>{a.name}</span>
+                          {a.lastBookingDate && (
+                            <span className="text-[10px] text-muted-foreground">
+                              Last: {new Date(a.lastBookingDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs text-right py-2 font-mono">{fmt(a.revenue)}</TableCell>
+                      <TableCell className="text-xs text-right py-2">{fmtN(a.roomNights)}</TableCell>
+                      <TableCell className="text-xs text-right py-2">{a.bookings}</TableCell>
+                      <TableCell className="text-xs text-right py-2 font-mono">₹{fmtN(Math.round(a.arr))}</TableCell>
+                      <TableCell className="text-xs text-right py-2">
+                        <Badge variant="secondary" className="text-xs">{a.revenueSharePct.toFixed(1)}%</Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-right py-2">
+                        {isInactive ? (
+                          <Badge className="text-[10px] bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 border-0">
+                            🔴 {a.daysSinceLastBooking}d inactive
+                          </Badge>
+                        ) : isSlow ? (
+                          <Badge className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border-0">
+                            🟡 Slow ({a.daysSinceLastBooking}d)
+                          </Badge>
+                        ) : isTopVal ? (
+                          <Badge className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border-0">
+                            ⭐ High Value
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px]">Active</Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>

@@ -1994,7 +1994,7 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
 
   // Source contribution table
   const sourceMap: Record<string, { bookings: number; revenue: number; roomNights: number }> = {};
-  const agentMap:  Record<number, { bookings: number; revenue: number; roomNights: number }> = {};
+  const agentMap:  Record<number, { bookings: number; revenue: number; roomNights: number; lastBookingDate: string | null }> = {};
   let groupCount = 0; let groupRevenue = 0; let groupNights = 0;
   const seenBookings = new Set<number>();
 
@@ -2015,10 +2015,14 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
     sourceMap[category].roomNights += nights;
 
     if (r.travelAgentId) {
-      if (!agentMap[r.travelAgentId]) agentMap[r.travelAgentId] = { bookings: 0, revenue: 0, roomNights: 0 };
+      if (!agentMap[r.travelAgentId]) agentMap[r.travelAgentId] = { bookings: 0, revenue: 0, roomNights: 0, lastBookingDate: null };
       agentMap[r.travelAgentId].bookings++;
       agentMap[r.travelAgentId].revenue += rev;
       agentMap[r.travelAgentId].roomNights += nights;
+      const bookingDate = r.checkInDate ? new Date(r.checkInDate).toISOString().split("T")[0] : null;
+      if (bookingDate && (!agentMap[r.travelAgentId].lastBookingDate || bookingDate > agentMap[r.travelAgentId].lastBookingDate)) {
+        agentMap[r.travelAgentId].lastBookingDate = bookingDate;
+      }
     }
 
     if (r.isGroupBooking) { groupCount++; groupRevenue += rev; groupNights += nights; }
@@ -2055,9 +2059,13 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
     agentNames = Object.fromEntries(agentRows.map(a => [a.id, a.name]));
   }
 
+  const now = Date.now();
   const topAgents = Object.entries(agentMap)
     .map(([idStr, d]) => {
       const id = Number(idStr);
+      const daysSince = d.lastBookingDate
+        ? Math.floor((now - new Date(d.lastBookingDate).getTime()) / 86400000)
+        : null;
       return {
         id,
         name: agentNames[id] || `Agent #${id}`,
@@ -2066,10 +2074,22 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
         roomNights: d.roomNights,
         arr: d.roomNights > 0 ? d.revenue / d.roomNights : 0,
         revenueSharePct: totalRevenue > 0 ? (d.revenue / totalRevenue) * 100 : 0,
+        lastBookingDate: d.lastBookingDate,
+        daysSinceLastBooking: daysSince,
       };
     })
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 15);
+
+  // Dependency risk: based on top source's share
+  const topSource = sources[0] || null;
+  const topShare = topSource?.revenueSharePct ?? 0;
+  const dependencyRisk = topShare >= 50 ? "high" : topShare >= 30 ? "moderate" : "healthy";
+
+  // Top 3 TA share for concentration insight
+  const top3TARevenue = topAgents.slice(0, 3).reduce((s, a) => s + a.revenue, 0);
+  const taTotalRevenue = Object.values(agentMap).reduce((s, a) => s + a.revenue, 0);
+  const top3TAShare = taTotalRevenue > 0 ? (top3TARevenue / taTotalRevenue) * 100 : 0;
 
   return {
     sources,
@@ -2081,6 +2101,11 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
       roomNights: groupNights,
       arr: groupNights > 0 ? groupRevenue / groupNights : 0,
       revenueSharePct: totalRevenue > 0 ? (groupRevenue / totalRevenue) * 100 : 0,
+    },
+    dependencyRisk: {
+      level: dependencyRisk,
+      topSource: topSource ? { label: topSource.label, share: topSource.revenueSharePct } : null,
+      top3TAShare,
     },
   };
 }
