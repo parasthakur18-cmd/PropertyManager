@@ -1,0 +1,104 @@
+I need a complete feasibility audit before any development.
+
+Goal:
+I want guests to book directly from my property websites instead of relying on OTA booking engines. Hostezee should become the master inventory and booking engine.
+
+Please analyze the entire codebase and answer the following:
+
+1. IS THIS POSSIBLE TODAY?
+
+* Can Hostezee sync live room availability to a website?
+* Can a website read live availability from Hostezee?
+* Can a website create bookings directly in Hostezee?
+* Can Hostezee automatically reduce inventory after a website booking?
+* Can Hostezee push updated inventory to AioSell so OTAs remain synchronized?
+
+2. WHAT ALREADY EXISTS?
+   Identify:
+
+* Existing availability APIs
+* Existing booking creation APIs
+* Existing room inventory services
+* Existing pricing/rate services
+* Existing payment integrations
+* Existing OTA sync services
+
+For each item provide:
+
+* File path
+* Function name
+* Endpoint
+* Purpose
+
+3. WHAT IS MISSING?
+   List every missing component required for:
+
+Website → Hostezee → Inventory Update → OTA Sync
+
+Examples:
+
+* Public availability API
+* Public booking API
+* Website booking widget
+* Payment callback integration
+* Guest confirmation flow
+* Rate API
+* Availability API
+
+4. WEBSITE REQUIREMENTS
+   What exactly must be built on the website side?
+
+Please provide:
+
+* Search availability page
+* Room listing page
+* Room detail page
+* Checkout page
+* Payment page
+* Booking confirmation page
+
+For each page explain:
+
+* Data required from Hostezee
+* API endpoint needed
+* Existing endpoint if already available
+
+5. DIRECT BOOKING ENGINE
+   Can Hostezee become a complete booking engine for:
+
+* The Forest Pinnacle
+* The Woodpecker Inn
+* The Blue Mont Sojha
+
+without using any OTA booking engine?
+
+If yes:
+
+* Explain architecture
+* Explain data flow
+* Explain inventory flow
+
+6. SECURITY REVIEW
+   Can availability and booking APIs be exposed publicly?
+   If not, what changes are required?
+
+7. FINAL VERDICT
+   Choose one:
+
+A. Ready Now
+Hostezee already supports direct website bookings.
+
+B. Mostly Ready
+Only small additions are required.
+
+C. Requires Development
+List exact missing modules.
+
+IMPORTANT:
+Audit only.
+Do not modify code.
+Do not deploy.
+Do not create files.
+Do not make assumptions.
+
+I need a technical feasibility report with exact file paths, services, APIs, and development effort required.
