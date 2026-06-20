@@ -8468,6 +8468,47 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         res.status(500).json({ message: e.message || "Failed" });
       }
     });
+
+    app.get("/api/owner/property-benchmark", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const { getPropertyPerformance } = await import("./owner-bi");
+        const perf = await getPropertyPerformance(parseFilters(req));
+        const props = perf.properties || [];
+        const totalRevenue = props.reduce((s: number, p: any) => s + (p.revenue?.total || 0), 0);
+        const benchmark = props.map((p: any) => ({
+          propertyId: p.propertyId,
+          propertyName: p.propertyName,
+          revenue: p.revenue?.total || 0,
+          occupancyPct: p.rooms?.occupancyPct || 0,
+          arr: p.performance?.arr || 0,
+          revpar: p.performance?.revpar || 0,
+          revenueSharePct: totalRevenue > 0 ? ((p.revenue?.total || 0) / totalRevenue) * 100 : 0,
+          roomNights: p.rooms?.occupiedNights || 0,
+          totalRooms: p.rooms?.total || 0,
+        })).sort((a: any, b: any) => b.revenue - a.revenue);
+
+        // Deterministic AI summary (rule-based, no AI call)
+        const top = benchmark[0];
+        const low = benchmark.length > 1 ? benchmark[benchmark.length - 1] : null;
+        const topOcc = benchmark.reduce((a: any, b: any) => (a.occupancyPct > b.occupancyPct ? a : b), benchmark[0] || {});
+        const topArr = benchmark.reduce((a: any, b: any) => (a.arr > b.arr ? a : b), benchmark[0] || {});
+        const summaryLines: string[] = [];
+        if (top) summaryLines.push(`${top.propertyName} leads with ₹${(top.revenue/100000).toFixed(1)}L revenue (${top.revenueSharePct.toFixed(0)}% of total) at ${top.occupancyPct.toFixed(0)}% occupancy.`);
+        if (topArr && topArr.propertyName !== top?.propertyName) summaryLines.push(`${topArr.propertyName} commands the highest ARR at ₹${Math.round(topArr.arr).toLocaleString("en-IN")}/night — premium pricing is working.`);
+        if (topOcc && topOcc.propertyName !== top?.propertyName) summaryLines.push(`${topOcc.propertyName} has the best occupancy at ${topOcc.occupancyPct.toFixed(0)}% — high demand, consider yield management.`);
+        if (low && low.propertyName !== top?.propertyName) summaryLines.push(`${low.propertyName} needs attention — lowest revenue at ₹${(low.revenue/100000).toFixed(1)}L (${low.occupancyPct.toFixed(0)}% occupancy). Focus on promotions or TA partnerships.`);
+        if (benchmark.length > 1) {
+          const revGap = top ? top.revenue - (benchmark[1]?.revenue || 0) : 0;
+          if (revGap > 0) summaryLines.push(`Revenue gap between top and second property: ₹${(revGap/100000).toFixed(1)}L — opportunity to close through targeted campaigns.`);
+        }
+
+        res.json({ benchmark, aiSummary: summaryLines });
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/property-benchmark", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
   }
   // ── End of Owner BI Module ────────────────────────────────────────────
 

@@ -1979,7 +1979,7 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
   const prevEnd   = new Date(start.getTime() - 1);
   const prevStart = new Date(prevEnd.getTime() - durationMs);
 
-  // Main query — includes travelAgentId + isGroupBooking + guestName
+  // Main query — joins guests (fullName) + rooms (roomType) for proper organizer attribution
   const rows = await db
     .select({
       bookingId:      bookings.id,
@@ -1987,7 +1987,8 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
       source:         bookings.source,
       isGroupBooking: bookings.isGroupBooking,
       travelAgentId:  bookings.travelAgentId,
-      guestName:      bookings.guestName,
+      guestFullName:  guests.fullName,
+      roomType:       rooms.roomType,
       checkInDate:    bookings.checkInDate,
       checkOutDate:   bookings.checkOutDate,
       roomCharges:    bills.roomCharges,
@@ -1996,12 +1997,16 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
     })
     .from(bills)
     .innerJoin(bookings, eq(bills.bookingId, bookings.id))
+    .leftJoin(guests, eq(bookings.guestId, guests.id))
+    .leftJoin(rooms, eq(bookings.roomId, rooms.id))
     .where(and(...conditions));
 
   // Source contribution table
   const sourceMap: Record<string, { bookings: number; revenue: number; roomNights: number }> = {};
   const agentMap:  Record<number, { bookings: number; revenue: number; roomNights: number; lastBookingDate: string | null }> = {};
-  const organizerMap: Record<string, { bookings: number; revenue: number; roomNights: number }> = {};
+  // organizerMap key: "ta:{id}" for TA-attributed groups, guest full name otherwise
+  const organizerMap: Record<string, { bookings: number; revenue: number; roomNights: number; isTa: boolean; taId?: number }> = {};
+  const roomTypeMap: Record<string, { bookings: number; revenue: number; roomNights: number }> = {};
   let groupCount = 0; let groupRevenue = 0; let groupNights = 0;
   const seenBookings = new Set<number>();
 
@@ -2032,13 +2037,29 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
       }
     }
 
+    // Room type breakdown (uses rooms JOIN; falls back to "Standard" if no room linked)
+    const rt = r.roomType?.trim() || "Standard";
+    if (!roomTypeMap[rt]) roomTypeMap[rt] = { bookings: 0, revenue: 0, roomNights: 0 };
+    roomTypeMap[rt].bookings++;
+    roomTypeMap[rt].revenue += rev;
+    roomTypeMap[rt].roomNights += nights;
+
     if (r.isGroupBooking) {
       groupCount++; groupRevenue += rev; groupNights += nights;
-      const org = r.guestName?.trim() || "Unknown";
-      if (!organizerMap[org]) organizerMap[org] = { bookings: 0, revenue: 0, roomNights: 0 };
-      organizerMap[org].bookings++;
-      organizerMap[org].revenue += rev;
-      organizerMap[org].roomNights += nights;
+      // Attribution priority: Travel Agent → Guest Full Name
+      if (r.travelAgentId) {
+        const orgKey = `ta:${r.travelAgentId}`;
+        if (!organizerMap[orgKey]) organizerMap[orgKey] = { bookings: 0, revenue: 0, roomNights: 0, isTa: true, taId: r.travelAgentId };
+        organizerMap[orgKey].bookings++;
+        organizerMap[orgKey].revenue += rev;
+        organizerMap[orgKey].roomNights += nights;
+      } else {
+        const orgKey = r.guestFullName?.trim() || "Unknown Guest";
+        if (!organizerMap[orgKey]) organizerMap[orgKey] = { bookings: 0, revenue: 0, roomNights: 0, isTa: false };
+        organizerMap[orgKey].bookings++;
+        organizerMap[orgKey].revenue += rev;
+        organizerMap[orgKey].roomNights += nights;
+      }
     }
   }
 
@@ -2129,15 +2150,31 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
     return { ...s, prevRevenue: prev, trendPct };
   });
 
-  // ── Group organizers ──────────────────────────────────────────────────────
-  const topGroupOrganizers = Object.entries(organizerMap)
-    .map(([name, d]) => ({
-      name,
+  // ── Room type breakdown ──────────────────────────────────────────────────
+  const roomTypeBreakdown = Object.entries(roomTypeMap)
+    .map(([roomType, d]) => ({
+      roomType,
       bookings: d.bookings,
       revenue: d.revenue,
       roomNights: d.roomNights,
-      shareOfGroupRevenue: groupRevenue > 0 ? (d.revenue / groupRevenue) * 100 : 0,
+      arr: d.roomNights > 0 ? d.revenue / d.roomNights : 0,
+      revenueSharePct: totalRevenue > 0 ? (d.revenue / totalRevenue) * 100 : 0,
     }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  // ── Group organizers (attribution: TA name → guest full name) ─────────────
+  const topGroupOrganizers = Object.entries(organizerMap)
+    .map(([key, d]) => {
+      const displayName = d.isTa && d.taId ? (agentNames[d.taId] || `Agent #${d.taId}`) : key;
+      return {
+        name: displayName,
+        isAgent: d.isTa,
+        bookings: d.bookings,
+        revenue: d.revenue,
+        roomNights: d.roomNights,
+        shareOfGroupRevenue: groupRevenue > 0 ? (d.revenue / groupRevenue) * 100 : 0,
+      };
+    })
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 5);
 
@@ -2153,6 +2190,36 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
   const top3TARevenue = topAgents.slice(0, 3).reduce((s, a) => s + a.revenue, 0);
   const taTotalRevenue = Object.values(agentMap).reduce((s, a) => s + a.revenue, 0);
   const top3TAShare = taTotalRevenue > 0 ? (top3TARevenue / taTotalRevenue) * 100 : 0;
+
+  // ── Forecast / Run Rate ───────────────────────────────────────────────────
+  const startDt       = new Date(filters.startDate + "T00:00:00Z");
+  const endDt         = new Date(filters.endDate   + "T23:59:59Z");
+  const todayDt       = new Date();
+  const totalPeriodDays = Math.max(1, Math.ceil((endDt.getTime() - startDt.getTime()) / 86400000));
+  const elapsedDays     = Math.min(totalPeriodDays, Math.max(1, Math.ceil((todayDt.getTime() - startDt.getTime()) / 86400000)));
+  const remainingDays   = Math.max(0, totalPeriodDays - elapsedDays);
+  const runRatePerDay   = totalRevenue / elapsedDays;
+  const projectedRevenue = totalRevenue + runRatePerDay * remainingDays;
+
+  const targetMonth = new Date(filters.startDate).getMonth() + 1;
+  const targetYear  = new Date(filters.startDate).getFullYear();
+  const tgtConds: any[] = [eq(propertyTargets.month, targetMonth), eq(propertyTargets.year, targetYear)];
+  if (filters.propertyIds?.length) tgtConds.push(inArray(propertyTargets.propertyId, filters.propertyIds));
+  const targetRows = await db.select({ revenueTarget: propertyTargets.revenueTarget }).from(propertyTargets).where(and(...tgtConds));
+  const monthTarget = targetRows.reduce((s: number, t: any) => s + num(t.revenueTarget), 0);
+  const gapToTarget = monthTarget > 0 ? monthTarget - projectedRevenue : null;
+  const targetAchievementPct = monthTarget > 0 ? (totalRevenue / monthTarget) * 100 : null;
+
+  const forecast = {
+    totalPeriodDays,
+    elapsedDays,
+    remainingDays,
+    runRatePerDay:      Math.round(runRatePerDay),
+    projectedRevenue:   Math.round(projectedRevenue),
+    monthTarget,
+    gapToTarget:           gapToTarget !== null ? Math.round(gapToTarget) : null,
+    targetAchievementPct:  targetAchievementPct !== null ? Math.round(targetAchievementPct * 10) / 10 : null,
+  };
 
   return {
     sources: sourceTrends,
@@ -2172,5 +2239,7 @@ export async function getSourceIntelligence(filters: OwnerBIFilters) {
       topSource: topSource ? { label: topSource.label, share: topSource.revenueSharePct } : null,
       top3TAShare,
     },
+    roomTypeBreakdown,
+    forecast,
   };
 }

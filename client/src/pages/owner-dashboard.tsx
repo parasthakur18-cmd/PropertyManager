@@ -12,6 +12,7 @@ import {
   Bed, Star, ShieldAlert, Eye, Calculator,
   CheckCircle2, XCircle, Plus, Save, Pencil, ChevronDown, ChevronUp,
   Zap, Clock, Package, AlertCircle, Building2, Sparkles, Network,
+  Compass, MapPin,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -456,7 +457,119 @@ function ExecutiveDashboard({ filters }: { filters: FilterState }) {
           </CardContent>
         </Card>
       )}
+
+      {/* Multi-Property Benchmarking */}
+      <MultiPropertyBenchmark filters={filters} />
     </div>
+  );
+}
+
+function MultiPropertyBenchmark({ filters }: { filters: FilterState }) {
+  const qp = buildQP(filters);
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["/api/owner/property-benchmark", qp],
+    queryFn: () => fetch(`/api/owner/property-benchmark${qp}`).then(r => r.json()),
+    staleTime: 60000,
+  });
+
+  const fmtL = (n: number) => `₹${(n / 100000).toFixed(1)}L`;
+  const nf = (n: number) => n.toLocaleString("en-IN");
+
+  if (isLoading) return (
+    <Card><CardContent className="p-6 text-center text-xs text-muted-foreground">Loading property benchmarks…</CardContent></Card>
+  );
+  const benchmark: any[] = data?.benchmark || [];
+  const aiSummary: string[] = data?.aiSummary || [];
+  if (benchmark.length < 2) return null;
+
+  const maxRev = Math.max(...benchmark.map((p: any) => p.revenue), 1);
+
+  return (
+    <Card className="border-indigo-200 dark:border-indigo-900">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Building2 className="h-4 w-4 text-indigo-600" />
+          Multi-Property Benchmarking
+          <Badge variant="outline" className="text-[10px] ml-auto font-normal">{benchmark.length} properties</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* AI Summary */}
+        {aiSummary.length > 0 && (
+          <div className="p-3 rounded-lg bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800">
+            <p className="text-[10px] font-semibold text-indigo-700 dark:text-indigo-300 uppercase tracking-wide mb-2 flex items-center gap-1">
+              <Sparkles className="h-3 w-3" /> AI Performance Summary
+            </p>
+            <ul className="space-y-1.5">
+              {aiSummary.map((line: string, i: number) => (
+                <li key={i} className="text-xs flex gap-1.5">
+                  <span className="text-indigo-400 mt-0.5 shrink-0">•</span>
+                  <span className="text-muted-foreground">{line}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Benchmark table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b">
+                <th className="text-left py-2 pr-3 font-medium text-muted-foreground">Property</th>
+                <th className="text-right py-2 px-2 font-medium text-muted-foreground">Revenue</th>
+                <th className="text-right py-2 px-2 font-medium text-muted-foreground">Occupancy</th>
+                <th className="text-right py-2 px-2 font-medium text-muted-foreground">ARR</th>
+                <th className="text-right py-2 px-2 font-medium text-muted-foreground">RevPAR</th>
+                <th className="text-right py-2 pl-2 font-medium text-muted-foreground">Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {benchmark.map((p: any, i: number) => (
+                <tr key={p.propertyId} className="border-b last:border-0 hover:bg-muted/30">
+                  <td className="py-2.5 pr-3">
+                    <div className="flex items-center gap-1.5">
+                      {i === 0 && <span className="text-amber-500 text-xs">★</span>}
+                      <span className="font-medium">{p.propertyName}</span>
+                    </div>
+                    {/* Revenue bar */}
+                    <div className="mt-1 h-1 bg-muted rounded-full overflow-hidden w-24">
+                      <div className="h-full rounded-full bg-indigo-500" style={{ width: `${(p.revenue / maxRev) * 100}%` }} />
+                    </div>
+                  </td>
+                  <td className="text-right py-2.5 px-2 font-mono font-semibold">{fmtL(p.revenue)}</td>
+                  <td className="text-right py-2.5 px-2">
+                    <span className={`font-semibold ${p.occupancyPct >= 70 ? "text-emerald-600" : p.occupancyPct >= 50 ? "text-amber-600" : "text-red-600"}`}>
+                      {p.occupancyPct.toFixed(1)}%
+                    </span>
+                  </td>
+                  <td className="text-right py-2.5 px-2 font-mono">₹{nf(Math.round(p.arr))}</td>
+                  <td className="text-right py-2.5 px-2 font-mono">₹{nf(Math.round(p.revpar))}</td>
+                  <td className="text-right py-2.5 pl-2">
+                    <Badge variant="secondary" className="text-[10px]">{p.revenueSharePct.toFixed(0)}%</Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* KPI comparison bars */}
+        <div className="space-y-3 pt-1 border-t">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Occupancy Comparison</p>
+          {benchmark.map((p: any) => (
+            <div key={p.propertyId} className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground w-32 truncate shrink-0">{p.propertyName}</span>
+              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                <div className={`h-full rounded-full ${p.occupancyPct >= 70 ? "bg-emerald-500" : p.occupancyPct >= 50 ? "bg-amber-500" : "bg-red-500"}`}
+                  style={{ width: `${Math.min(100, p.occupancyPct)}%` }} />
+              </div>
+              <span className="text-xs w-10 text-right font-medium">{p.occupancyPct.toFixed(0)}%</span>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -2231,6 +2344,77 @@ function SourceIntelligenceTab({ filters }: { filters: FilterState }) {
         </Card>
       )}
 
+      {/* Executive Compass — 5 owner questions answered with data */}
+      <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
+        <CardContent className="p-4">
+          <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-3 flex items-center gap-1.5">
+            <Compass className="h-3.5 w-3.5" /> Executive Compass
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+            {[
+              {
+                q: "Where is revenue coming from?",
+                a: sources[0] ? `${sources[0].label} leads at ${sources[0].revenueSharePct.toFixed(0)}% (${fmt(sources[0].revenue)})` : "No data yet",
+                color: "text-teal-700 dark:text-teal-300",
+              },
+              {
+                q: "What is changing?",
+                a: (() => {
+                  const up = sources.filter((s: any) => (s.trendPct ?? 0) > 5).map((s: any) => s.label);
+                  const dn = sources.filter((s: any) => (s.trendPct ?? 0) < -5).map((s: any) => s.label);
+                  if (up.length && dn.length) return `↑ ${up[0]} gaining, ↓ ${dn[0]} declining`;
+                  if (up.length) return `↑ ${up.join(", ")} growing vs prior period`;
+                  if (dn.length) return `↓ ${dn.join(", ")} declining vs prior period`;
+                  return "Channels stable vs prior period";
+                })(),
+                color: "text-blue-700 dark:text-blue-300",
+              },
+              {
+                q: "What is risky?",
+                a: (() => {
+                  const inactTa = topAgents.find((a: any) => a.daysSinceLastBooking != null && a.daysSinceLastBooking > 45);
+                  if (data.dependencyRisk?.level === "high") return `${data.dependencyRisk.topSource?.label} = ${data.dependencyRisk.topSource?.share.toFixed(0)}% concentration`;
+                  if (inactTa) return `${inactTa.name} inactive ${inactTa.daysSinceLastBooking}d`;
+                  if (groupOrgRisk === "high") return `${groupOrganizers[0]?.name} = ${groupOrganizers[0]?.shareOfGroupRevenue.toFixed(0)}% of groups`;
+                  return data.dependencyRisk?.level === "moderate" ? `Moderate concentration in ${data.dependencyRisk.topSource?.label}` : "No critical risks detected";
+                })(),
+                color: "text-red-700 dark:text-red-300",
+              },
+              {
+                q: "What is the opportunity?",
+                a: (() => {
+                  const growing = sources.find((s: any) => (s.trendPct ?? 0) > 15);
+                  const otaS = sources.find((s: any) => s.category === "ota");
+                  if (growing) return `Double down on ${growing.label} — up ${growing.trendPct.toFixed(0)}%`;
+                  if (otaS && otaS.revenueSharePct < 15) return `OTA underutilised (${otaS.revenueSharePct.toFixed(0)}%) — list more rooms`;
+                  const rt = (data.roomTypeBreakdown || [])[0];
+                  if (rt) return `${rt.roomType} drives most revenue — optimise pricing`;
+                  return "Diversify channels to reduce risk";
+                })(),
+                color: "text-emerald-700 dark:text-emerald-300",
+              },
+              {
+                q: "What should I do next?",
+                a: (() => {
+                  const inact = topAgents.find((a: any) => a.daysSinceLastBooking != null && a.daysSinceLastBooking > 45);
+                  if (inact) return `Call ${inact.name} — inactive ${inact.daysSinceLastBooking} days`;
+                  if (data.dependencyRisk?.level === "high") return `Add a second major booking channel`;
+                  const dn = sources.find((s: any) => (s.trendPct ?? 0) < -15);
+                  if (dn) return `Investigate why ${dn.label} fell ${Math.abs(dn.trendPct).toFixed(0)}%`;
+                  return "Review top TA relationships this week";
+                })(),
+                color: "text-amber-700 dark:text-amber-300",
+              },
+            ].map(({ q, a, color }) => (
+              <div key={q} className="space-y-0.5">
+                <p className="text-[10px] font-medium text-muted-foreground leading-tight">{q}</p>
+                <p className={`text-xs font-semibold leading-snug ${color}`}>{a}</p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Source Dependency Risk Meter */}
       {data.dependencyRisk && (
         <Card className={`border-l-4 ${data.dependencyRisk.level === "high" ? "border-l-red-500 bg-red-50/40 dark:bg-red-950/10" : data.dependencyRisk.level === "moderate" ? "border-l-amber-500 bg-amber-50/40 dark:bg-amber-950/10" : "border-l-emerald-500 bg-emerald-50/30 dark:bg-emerald-950/10"}`}>
@@ -2332,6 +2516,89 @@ function SourceIntelligenceTab({ filters }: { filters: FilterState }) {
         ))}
       </div>
 
+      {/* Forecast Intelligence */}
+      {data.forecast && (
+        <Card className="border-blue-200 dark:border-blue-900">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-blue-600" />
+              Forecast Intelligence
+              <Badge variant="outline" className="text-[10px] ml-auto font-normal">
+                Day {data.forecast.elapsedDays} of {data.forecast.totalPeriodDays}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Run Rate / Day</p>
+                <p className="text-xl font-bold text-blue-700 dark:text-blue-300 mt-1">₹{fmtN(data.forecast.runRatePerDay)}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">based on {data.forecast.elapsedDays}d elapsed</p>
+              </div>
+              <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Projected Revenue</p>
+                <p className="text-xl font-bold text-emerald-700 dark:text-emerald-300 mt-1">{fmt(data.forecast.projectedRevenue)}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{data.forecast.remainingDays}d remaining at run rate</p>
+              </div>
+              <div className={`p-3 rounded-lg border ${data.forecast.monthTarget > 0 ? (data.forecast.gapToTarget > 0 ? "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800" : "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800") : "bg-muted/30 border-muted"}`}>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Gap to Target</p>
+                {data.forecast.monthTarget > 0 ? (
+                  <>
+                    <p className={`text-xl font-bold mt-1 ${data.forecast.gapToTarget > 0 ? "text-red-700 dark:text-red-300" : "text-emerald-700 dark:text-emerald-300"}`}>
+                      {data.forecast.gapToTarget > 0 ? `−${fmt(data.forecast.gapToTarget)}` : `+${fmt(Math.abs(data.forecast.gapToTarget))}`}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">target: {fmt(data.forecast.monthTarget)}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xl font-bold mt-1 text-muted-foreground">—</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">No target set</p>
+                  </>
+                )}
+              </div>
+              <div className={`p-3 rounded-lg border ${data.forecast.targetAchievementPct !== null ? (data.forecast.targetAchievementPct >= 80 ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800" : data.forecast.targetAchievementPct >= 50 ? "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800" : "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800") : "bg-muted/30 border-muted"}`}>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Target Achievement</p>
+                {data.forecast.targetAchievementPct !== null ? (
+                  <>
+                    <p className={`text-xl font-bold mt-1 ${data.forecast.targetAchievementPct >= 80 ? "text-emerald-700 dark:text-emerald-300" : data.forecast.targetAchievementPct >= 50 ? "text-amber-700 dark:text-amber-300" : "text-red-700 dark:text-red-300"}`}>
+                      {data.forecast.targetAchievementPct.toFixed(1)}%
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">of target so far</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xl font-bold mt-1 text-muted-foreground">—</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Set target in Targets tab</p>
+                  </>
+                )}
+              </div>
+            </div>
+            {/* Progress bar */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>Period progress: {data.forecast.elapsedDays} / {data.forecast.totalPeriodDays} days</span>
+                <span>{((data.forecast.elapsedDays / data.forecast.totalPeriodDays) * 100).toFixed(0)}% elapsed</span>
+              </div>
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${Math.min(100, (data.forecast.elapsedDays / data.forecast.totalPeriodDays) * 100)}%` }} />
+              </div>
+              {data.forecast.monthTarget > 0 && (
+                <>
+                  <div className="flex justify-between text-[10px] text-muted-foreground mt-2">
+                    <span>Revenue towards target</span>
+                    <span>{fmt(totals.revenue)} / {fmt(data.forecast.monthTarget)}</span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${data.forecast.targetAchievementPct >= 80 ? "bg-emerald-500" : data.forecast.targetAchievementPct >= 50 ? "bg-amber-500" : "bg-red-500"}`}
+                      style={{ width: `${Math.min(100, data.forecast.targetAchievementPct || 0)}%` }} />
+                  </div>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Source Contribution Table */}
         <Card className="lg:col-span-2">
@@ -2414,59 +2681,81 @@ function SourceIntelligenceTab({ filters }: { filters: FilterState }) {
         </Card>
       </div>
 
-      {/* Revenue Loss Simulation */}
-      {(topAgents.length > 0 || groupOrganizers.length > 0) && (
-        <Card className="border-orange-200 dark:border-orange-900">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2 text-orange-700 dark:text-orange-300">
-              <AlertTriangle className="h-4 w-4" />
-              Revenue Loss Simulation — "What If?"
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {topAgents[0] && (
-                <div className="p-3 rounded-lg bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800">
-                  <p className="text-xs font-semibold text-orange-800 dark:text-orange-200 mb-2">
-                    If <strong>{topAgents[0].name}</strong> stops sending business…
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <p className="text-lg font-bold text-red-700 dark:text-red-300">{fmt(topAgents[0].revenue)}</p>
-                      <p className="text-[10px] text-muted-foreground">Revenue at risk</p>
-                    </div>
-                    <div>
-                      <p className="text-lg font-bold text-red-700 dark:text-red-300">
-                        {totals.roomNights > 0 ? `−${((topAgents[0].roomNights / totals.roomNights) * 100).toFixed(0)}%` : "—"}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground">Room night impact</p>
-                    </div>
-                  </div>
+      {/* Revenue at Risk Dashboard — 4 dimensions */}
+      <Card className="border-red-200 dark:border-red-900">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2 text-red-700 dark:text-red-300">
+            <ShieldAlert className="h-4 w-4" />
+            Revenue at Risk Dashboard
+            <Badge variant="outline" className="text-[10px] ml-auto font-normal text-muted-foreground">What if key sources disappear?</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Top Travel Agent */}
+            {topAgents[0] && (
+              <div className="p-3 rounded-lg bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Users className="h-3 w-3 text-purple-600" />
+                  <p className="text-[10px] font-semibold text-purple-700 dark:text-purple-300 uppercase tracking-wide">Top Travel Agent</p>
                 </div>
-              )}
-              {groupOrganizers[0] && (
-                <div className="p-3 rounded-lg bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800">
-                  <p className="text-xs font-semibold text-orange-800 dark:text-orange-200 mb-2">
-                    If <strong>{groupOrganizers[0].name}</strong> stops group bookings…
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <p className="text-lg font-bold text-red-700 dark:text-red-300">{fmt(groupOrganizers[0].revenue)}</p>
-                      <p className="text-[10px] text-muted-foreground">Group revenue at risk</p>
-                    </div>
-                    <div>
-                      <p className="text-lg font-bold text-red-700 dark:text-red-300">
-                        {totals.roomNights > 0 ? `−${((groupOrganizers[0].roomNights / totals.roomNights) * 100).toFixed(0)}%` : "—"}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground">Room night impact</p>
-                    </div>
-                  </div>
+                <p className="text-xs font-bold truncate mb-2">{topAgents[0].name}</p>
+                <p className="text-xl font-bold text-red-700 dark:text-red-300">{fmt(topAgents[0].revenue)}</p>
+                <p className="text-[10px] text-muted-foreground">at risk ({topAgents[0].revenueSharePct.toFixed(0)}% of total)</p>
+                <p className="text-[10px] text-red-600 mt-1">
+                  {totals.roomNights > 0 ? `−${((topAgents[0].roomNights / totals.roomNights) * 100).toFixed(0)}% room nights` : ""}
+                </p>
+              </div>
+            )}
+            {/* Top Group Organizer */}
+            {groupOrganizers[0] && (
+              <div className="p-3 rounded-lg bg-pink-50 dark:bg-pink-950/20 border border-pink-200 dark:border-pink-800">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Users className="h-3 w-3 text-pink-600" />
+                  <p className="text-[10px] font-semibold text-pink-700 dark:text-pink-300 uppercase tracking-wide">Top Group Organizer</p>
                 </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                <p className="text-xs font-bold truncate flex items-center gap-1 mb-2">
+                  {groupOrganizers[0].name}
+                  {groupOrganizers[0].isAgent && <Badge className="text-[9px] bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-200 border-0 px-1">via TA</Badge>}
+                </p>
+                <p className="text-xl font-bold text-red-700 dark:text-red-300">{fmt(groupOrganizers[0].revenue)}</p>
+                <p className="text-[10px] text-muted-foreground">at risk ({groupOrganizers[0].shareOfGroupRevenue.toFixed(0)}% of groups)</p>
+                <p className="text-[10px] text-red-600 mt-1">
+                  {totals.roomNights > 0 ? `−${((groupOrganizers[0].roomNights / totals.roomNights) * 100).toFixed(0)}% room nights` : ""}
+                </p>
+              </div>
+            )}
+            {/* Top Booking Source */}
+            {sources[0] && (
+              <div className="p-3 rounded-lg bg-teal-50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-800">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Globe className="h-3 w-3 text-teal-600" />
+                  <p className="text-[10px] font-semibold text-teal-700 dark:text-teal-300 uppercase tracking-wide">Top Booking Source</p>
+                </div>
+                <p className="text-xs font-bold truncate mb-2">{sources[0].label}</p>
+                <p className="text-xl font-bold text-red-700 dark:text-red-300">{fmt(sources[0].revenue)}</p>
+                <p className="text-[10px] text-muted-foreground">at risk ({sources[0].revenueSharePct.toFixed(0)}% of total)</p>
+                <p className="text-[10px] text-red-600 mt-1">
+                  {totals.roomNights > 0 ? `−${((sources[0].roomNights / totals.roomNights) * 100).toFixed(0)}% room nights` : ""}
+                </p>
+              </div>
+            )}
+            {/* Top Room Type */}
+            {(data.roomTypeBreakdown || []).length > 0 && (
+              <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Bed className="h-3 w-3 text-amber-600" />
+                  <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 uppercase tracking-wide">Top Room Type</p>
+                </div>
+                <p className="text-xs font-bold truncate mb-2">{data.roomTypeBreakdown[0].roomType}</p>
+                <p className="text-xl font-bold text-red-700 dark:text-red-300">{fmt(data.roomTypeBreakdown[0].revenue)}</p>
+                <p className="text-[10px] text-muted-foreground">at risk ({data.roomTypeBreakdown[0].revenueSharePct.toFixed(0)}% of total)</p>
+                <p className="text-[10px] text-amber-600 mt-1">ARR ₹{fmtN(Math.round(data.roomTypeBreakdown[0].arr))}/night</p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Group Dependency Risk by Organizer */}
       {groupOrganizers.length > 0 && (
@@ -2495,7 +2784,11 @@ function SourceIntelligenceTab({ filters }: { filters: FilterState }) {
                 {groupOrganizers.map((o: any, i: number) => (
                   <TableRow key={o.name}>
                     <TableCell className="text-xs font-medium py-2">
-                      {i === 0 && <span className="mr-1 text-amber-500">★</span>}{o.name}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {i === 0 && <span className="text-amber-500">★</span>}
+                        <span>{o.name}</span>
+                        {o.isAgent && <Badge className="text-[9px] bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-200 border-0 px-1">via TA</Badge>}
+                      </div>
                     </TableCell>
                     <TableCell className="text-xs text-right py-2 font-mono">{fmt(o.revenue)}</TableCell>
                     <TableCell className="text-xs text-right py-2">{fmtN(o.roomNights)}</TableCell>
