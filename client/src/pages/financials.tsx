@@ -141,10 +141,12 @@ export default function Financials() {
         basePrice = room?.pricePerNight || "0";
       }
       
-      // Calculate nights
+      // Calculate nights (strip time components to avoid floating-point/timezone errors)
       const checkIn = new Date(booking.checkInDate);
       const checkOut = new Date(booking.checkOutDate);
-      const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
+      const checkInDay = new Date(checkIn.getFullYear(), checkIn.getMonth(), checkIn.getDate());
+      const checkOutDay = new Date(checkOut.getFullYear(), checkOut.getMonth(), checkOut.getDate());
+      const nights = Math.floor((checkOutDay.getTime() - checkInDay.getTime()) / (1000 * 60 * 60 * 24));
       
       // Get bill details
       const roomCharges = bill ? parseFloat(bill.roomCharges) : 0;
@@ -181,8 +183,8 @@ export default function Financials() {
         guest?.fullName || "",
         guest?.phone || "",
         guest?.email || "",
-        format(checkIn, "yyyy-MM-dd HH:mm"),
-        format(checkOut, "yyyy-MM-dd HH:mm"),
+        format(checkIn, "dd-MM-yyyy"),
+        format(checkOut, "dd-MM-yyyy"),
         nights,
         booking.status,
         booking.numberOfGuests,

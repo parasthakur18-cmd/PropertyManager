@@ -1,0 +1,102 @@
+Issue: Financial Report Export – Check-in/Check-out Dates Missing & Nights Calculation Incorrect
+
+Problem 1: Check-in and Check-out Dates Not Showing
+
+When exporting data from Finance → Financial Reports, the exported Excel/CSV file shows:
+
+* Check-in Date column = #######
+* Check-out Date column = #######
+
+Expected Behavior:
+
+* Export actual check-in and check-out dates in DD-MM-YYYY format.
+* Ensure Excel receives proper date values, not invalid serial numbers or overflow values.
+* Apply date formatting before export.
+
+Possible Cause:
+
+* Date objects are being exported incorrectly.
+* Excel column width/format is not being set.
+* Date conversion is failing during export mapping.
+
+Fix:
+
+* Export checkInDate and checkOutDate as formatted strings:
+
+  * DD-MM-YYYY
+  * or YYYY-MM-DD
+* Verify export mapper includes both fields.
+* Verify booking joins are returning check-in and check-out values.
+
+---
+
+Problem 2: Nights Count Showing One Extra Night
+
+Current Export:
+
+Check-in: 01-Jan
+Check-out: 02-Jan
+Actual Nights: 1
+Export Shows: 2
+
+Check-in: 01-Jan
+Check-out: 03-Jan
+Actual Nights: 2
+Export Shows: 3
+
+Check-in: 01-Jan
+Check-out: 04-Jan
+Actual Nights: 3
+Export Shows: 4
+
+Pattern:
+Exported Nights = Actual Nights + 1
+
+Root Cause:
+The nights calculation is likely using:
+
+differenceInDays + 1
+
+or
+
+Math.ceil(diff)
+
+instead of actual hotel-night calculation.
+
+Correct Formula:
+
+nights =
+(checkOutDate - checkInDate) / (1000 * 60 * 60 * 24)
+
+Examples:
+
+01 Jan → 02 Jan = 1 night
+01 Jan → 03 Jan = 2 nights
+01 Jan → 04 Jan = 3 nights
+01 Jan → 05 Jan = 4 nights
+
+Fix Required:
+
+Replace current nights calculation with:
+
+const nights = Math.floor(
+(checkout.getTime() - checkin.getTime()) /
+(1000 * 60 * 60 * 24)
+);
+
+Do NOT add +1.
+
+---
+
+Validation Examples
+
+Check-in | Check-out | Expected Nights
+01-Jan | 02-Jan | 1
+01-Jan | 03-Jan | 2
+01-Jan | 04-Jan | 3
+10-Jun | 15-Jun | 5
+
+Please fix both issues in:
+Finance → Financial Reports → Export Complete Data
+
+and verify exported Excel/CSV matches booking details exactly.
