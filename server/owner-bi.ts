@@ -51,10 +51,13 @@ const OTA_SOURCES = [
   "tripadvisor", "trip_advisor",
   "hostelworld",
   "aiosell", "ota",
+  "online",           // "Online" bookings via digital platform = OTA bucket
 ];
 
-const WALKIN_SOURCES = ["walk_in", "walk-in", "walkin", "walk in"];
-const WEBSITE_SOURCES = ["website", "direct_website", "web"];
+const WALKIN_SOURCES    = ["walk_in", "walk-in", "walkin", "walk in"];
+const TRAVEL_AGENT_SOURCES = ["travel agent", "travel_agent", "travelagent"];
+const GROUP_SOURCES     = ["group booking", "group_booking"];
+const WEBSITE_SOURCES   = ["website", "direct_website", "web"];
 const CORPORATE_SOURCES = ["corporate", "company", "business"];
 
 export function classifySource(source: string | null): string {
@@ -62,8 +65,12 @@ export function classifySource(source: string | null): string {
   const s = source.toLowerCase().trim();
   if (OTA_SOURCES.some((o) => s.includes(o))) return "ota";
   if (WALKIN_SOURCES.some((w) => s === w || s.includes(w))) return "walk_in";
+  // Travel Agent check BEFORE website/corporate so "Travel Agent" source text is not lost
+  if (TRAVEL_AGENT_SOURCES.some((t) => s === t || s.includes(t))) return "travel_agent";
+  if (GROUP_SOURCES.some((g) => s === g || s.includes(g))) return "group";
   if (WEBSITE_SOURCES.some((w) => s.includes(w))) return "website";
   if (CORPORATE_SOURCES.some((c) => s.includes(c))) return "corporate";
+  if (s === "others" || s === "other") return "other";
   return "direct";
 }
 

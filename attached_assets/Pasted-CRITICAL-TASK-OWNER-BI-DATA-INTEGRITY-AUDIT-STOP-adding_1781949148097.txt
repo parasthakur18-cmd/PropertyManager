@@ -1,0 +1,311 @@
+CRITICAL TASK: OWNER BI DATA INTEGRITY AUDIT
+
+STOP adding new BI features.
+
+Perform a complete audit of the entire Owner Business Intelligence module.
+
+The objective is NOT to add dashboards.
+
+The objective is to verify that every metric shown in Owner BI matches actual booking and billing data.
+
+==================================================
+AUDIT OBJECTIVE
+===============
+
+Owner BI is now being used for business decisions.
+
+If any source, revenue, occupancy, room night, ARR, RevPAR, travel agent, group, OTA, or forecast number is wrong, the entire BI becomes unreliable.
+
+Perform a full backend-to-frontend reconciliation.
+
+==================================================
+PHASE 1: SINGLE SOURCE OF TRUTH
+===============================
+
+Identify exactly which dataset is used by:
+
+* CEO Summary
+* Source Intelligence
+* Travel Agent Deep Dive
+* OTA + Commission
+* Revenue At Risk
+* Forecast Intelligence
+* Property Benchmark
+* Action Center
+
+For each section document:
+
+1. Source tables
+2. Joins
+3. Filters
+4. Date logic
+5. Revenue calculation
+6. Nights calculation
+
+Output a dependency map.
+
+==================================================
+PHASE 2: SOURCE ATTRIBUTION AUDIT
+=================================
+
+Verify booking source classification.
+
+Audit:
+
+OTA
+Direct
+Walk-in
+Travel Agent
+Group
+Corporate
+Website
+Other
+
+Check:
+
+* Null source values
+* Duplicate mappings
+* Incorrect mappings
+* Source normalization
+
+Examples:
+
+booking.com
+Booking.com
+BOOKING
+booking
+
+must all map to:
+
+OTA
+
+Generate report:
+
+Raw Source → Normalized Source
+
+==================================================
+PHASE 3: TRAVEL AGENT AUDIT
+===========================
+
+Verify:
+
+travelAgentId
+travelAgentName
+
+Check:
+
+* Missing travelAgentId
+* Bookings assigned to wrong source
+* Group bookings attributed incorrectly
+
+For every travel agent calculate:
+
+Revenue
+Bookings
+Room Nights
+
+Compare against Source Intelligence totals.
+
+Validation:
+
+SUM(all travel agents)
+must equal
+
+Travel Agent source total
+
+==================================================
+PHASE 4: OTA AUDIT
+==================
+
+User reported:
+
+Selecting OTA shows no data.
+
+Investigate:
+
+* Source normalization
+* OTA mapping logic
+* Filters
+* Query conditions
+* Frontend filtering
+
+Verify:
+
+Booking.com
+MMT
+Goibibo
+Agoda
+Airbnb
+Hostelworld
+
+actually appear in OTA source bucket.
+
+Output:
+
+OTA Revenue
+OTA Nights
+OTA Bookings
+
+==================================================
+PHASE 5: ROOM NIGHT AUDIT
+=========================
+
+Verify nights calculation everywhere.
+
+Audit:
+
+checkOut - checkIn
+
+No +1 logic.
+
+Validation examples:
+
+1 Jan → 2 Jan = 1 night
+1 Jan → 3 Jan = 2 nights
+1 Jan → 4 Jan = 3 nights
+
+Check every module:
+
+* Source Intelligence
+* Forecast
+* Travel Agent
+* Revenue At Risk
+* Benchmark
+
+==================================================
+PHASE 6: REVENUE RECONCILIATION
+===============================
+
+Pick 100 bookings.
+
+For each booking verify:
+
+Revenue
+Source
+Travel Agent
+Room Nights
+Property
+
+Then compare:
+
+Raw booking totals
+
+vs
+
+Owner BI totals
+
+Difference tolerance:
+
+0%
+
+No mismatch allowed.
+
+==================================================
+PHASE 7: PROPERTY RECONCILIATION
+================================
+
+For each property:
+
+Woodpecker
+Forest Pinnacle
+Blue Mont
+
+Verify:
+
+Revenue
+Bookings
+Nights
+ARR
+RevPAR
+
+against actual booking data.
+
+==================================================
+PHASE 8: FRONTEND CONSISTENCY AUDIT
+===================================
+
+Check if:
+
+CEO Summary Revenue
+
+=
+
+Source Intelligence Revenue
+
+=
+
+Travel Agent Revenue
+
+=
+
+Benchmark Revenue
+
+for same property and date range.
+
+No widget should calculate revenue differently.
+
+==================================================
+PHASE 9: DRILL-DOWN VALIDATION
+==============================
+
+User workflow test:
+
+Property = Forest Pinnacle
+
+Source = Travel Agent
+
+Travel Agent = Volunteer Yatra
+
+Verify:
+
+Revenue
+Bookings
+Nights
+ARR
+
+match actual bookings.
+
+Repeat for OTA.
+
+Repeat for Direct.
+
+Repeat for Walk-in.
+
+==================================================
+PHASE 10: AUDIT REPORT
+======================
+
+Produce final report:
+
+PASS / FAIL
+
+For:
+
+Revenue
+Nights
+Source Attribution
+Travel Agent Attribution
+OTA Attribution
+Property Benchmark
+Forecast
+Action Center
+
+List every mismatch.
+
+List exact root cause.
+
+Fix all mismatches before any further BI development.
+
+==================================================
+FINAL RULE
+==========
+
+Do not add new widgets.
+
+Do not add new charts.
+
+Do not add new KPIs.
+
+Treat Owner BI as a financial reporting system.
+
+Data accuracy is more important than features.
