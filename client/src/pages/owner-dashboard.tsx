@@ -152,6 +152,80 @@ interface FilterState {
   propertyIds: string;
 }
 
+function PropertyMultiSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const { data: properties = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/properties"],
+    staleTime: 300000,
+  });
+
+  const selected: number[] = value ? value.split(",").map(Number).filter(Boolean) : [];
+
+  const toggle = (id: number) => {
+    const next = selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id];
+    onChange(next.join(","));
+  };
+
+  const label =
+    selected.length === 0
+      ? "All Properties"
+      : selected.length === 1
+      ? (properties.find((p) => p.id === selected[0])?.name ?? `Property ${selected[0]}`)
+      : `${selected.length} properties`;
+
+  return (
+    <div className="relative ml-auto">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 h-8 px-3 rounded-md border bg-background text-xs font-medium hover:bg-muted/50 transition-colors min-w-[160px] justify-between"
+        data-testid="filter-property-select"
+      >
+        <span className="flex items-center gap-1.5 truncate">
+          <Building2 className="h-3 w-3 text-muted-foreground shrink-0" />
+          <span className="truncate">{label}</span>
+        </span>
+        <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-9 z-50 w-56 bg-popover border rounded-md shadow-lg py-1 max-h-64 overflow-y-auto">
+            <button
+              type="button"
+              className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/50 ${selected.length === 0 ? "font-semibold text-primary" : ""}`}
+              onClick={() => { onChange(""); setOpen(false); }}
+            >
+              <div className={`h-3.5 w-3.5 rounded border flex items-center justify-center shrink-0 ${selected.length === 0 ? "bg-primary border-primary" : "border-muted-foreground"}`}>
+                {selected.length === 0 && <CheckCircle2 className="h-3 w-3 text-primary-foreground" />}
+              </div>
+              All Properties
+            </button>
+            <div className="border-t my-1" />
+            {properties.map((p) => {
+              const checked = selected.includes(p.id);
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/50 ${checked ? "font-medium" : ""}`}
+                  onClick={() => toggle(p.id)}
+                >
+                  <div className={`h-3.5 w-3.5 rounded border flex items-center justify-center shrink-0 ${checked ? "bg-primary border-primary" : "border-muted-foreground"}`}>
+                    {checked && <CheckCircle2 className="h-3 w-3 text-primary-foreground" />}
+                  </div>
+                  <span className="truncate">{p.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function GlobalFilters({ filters, onChange }: { filters: FilterState; onChange: (f: FilterState) => void }) {
   const today = new Date().toISOString().split("T")[0];
 
@@ -210,16 +284,10 @@ function GlobalFilters({ filters, onChange }: { filters: FilterState; onChange: 
         </span>
       )}
 
-      <div className="flex items-center gap-1 ml-auto">
-        <Label className="text-xs text-muted-foreground">Property IDs:</Label>
-        <Input
-          placeholder="All (e.g. 1,2,3)"
-          value={filters.propertyIds}
-          onChange={(e) => onChange({ ...filters, propertyIds: e.target.value })}
-          className="w-[140px] h-8 text-xs"
-          data-testid="filter-property-ids"
-        />
-      </div>
+      <PropertyMultiSelect
+        value={filters.propertyIds}
+        onChange={(v) => onChange({ ...filters, propertyIds: v })}
+      />
     </div>
   );
 }
