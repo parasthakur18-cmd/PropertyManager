@@ -1,0 +1,193 @@
+DOUBLE ROOM INVENTORY BUG AUDIT
+
+I have attached screenshots from:
+
+1. Hostezee Mobile App
+2. Hostezee Inventory Calendar
+3. Hostezee Room Control
+4. Aiosell Inventory Calendar
+5. Aiosell Rates & Inventory
+
+AUDIT ONLY.
+
+DO NOT MODIFY CODE.
+DO NOT DEPLOY ANY FIX.
+DO NOT ASSUME THE ROOT CAUSE.
+
+==================================================
+ROOM TO INVESTIGATE
+==================================================
+
+Room Type: Double Room
+Room ID: 1525361508
+
+==================================================
+OBSERVED ISSUE
+==================================================
+
+The Double Room inventory is configured as:
+
+Inventory = 2 Rooms
+
+However Hostezee is showing:
+
+Net Booked = 3
+
+on certain dates.
+
+This is impossible because booked rooms should never exceed total inventory.
+
+The same type of issue was previously found where inventory was opening automatically instead of reducing when a booking was received.
+
+I need a complete root-cause investigation.
+
+==================================================
+REQUIRED INVESTIGATION
+==================================================
+
+1. INVENTORY VALIDATION
+
+For Room ID 1525361508 return:
+
+- Total configured inventory
+- Rooms to sell
+- Available rooms
+- Blocked rooms
+- Net booked rooms
+
+for every affected date visible in the screenshots.
+
+==================================================
+
+2. NET BOOKED CALCULATION AUDIT
+
+For every date where Net Booked = 3:
+
+Return all records contributing to that count.
+
+For each booking show:
+
+- Booking ID
+- Booking Number
+- Source (OTA / Direct / Manual)
+- Status
+- Check-in Date
+- Check-out Date
+- Room Allocation
+- Inventory Impact
+- Whether it is included in occupancy calculation
+
+I want to know exactly why the system reached a booked count of 3.
+
+==================================================
+
+3. DUPLICATE COUNTING CHECK
+
+Verify whether any booking is being counted multiple times because of:
+
+- Duplicate room allocations
+- OTA import duplication
+- Booking modifications
+- Split allocations
+- Check-in / Check-out overlap logic
+- Cancelled bookings
+- Checked-out bookings
+- No-show bookings
+- Historical allocations still active
+
+Provide evidence.
+
+==================================================
+
+4. INVENTORY FLOW TRACE
+
+Trace the complete calculation path:
+
+Booking
+→ Allocation
+→ Occupancy Calculation
+→ Net Booked
+→ Rooms To Sell
+→ Available Inventory
+→ Calendar Display
+→ Mobile App Display
+
+Show:
+
+- Database tables involved
+- Queries involved
+- Functions involved
+- Files involved
+
+==================================================
+
+5. HOSTEZEE VS AIOSell COMPARISON
+
+For every affected date compare:
+
+- Hostezee Inventory
+- Hostezee Net Booked
+- Hostezee Available
+- AIOSell Available
+- AIOSell Sold Count
+
+Identify which system is correct.
+
+==================================================
+
+6. VERIFY INVENTORY IS NOT REOPENING
+
+Specifically investigate whether:
+
+New Booking
+→ Inventory should decrease
+
+but instead:
+
+New Booking
+→ Inventory is automatically reopened or increased
+
+Verify using actual calculations and records.
+
+==================================================
+FINAL REPORT REQUIRED
+==================================================
+
+1. Root Cause
+
+Why is:
+
+Inventory = 2
+Net Booked = 3
+
+occurring?
+
+2. Evidence
+
+Include:
+
+- Booking records
+- Allocation records
+- Occupancy calculations
+- Database evidence
+- Code references
+
+3. Impact
+
+Determine whether this issue affects:
+
+- Only Double Room
+- Multiple dates of Double Room
+- Additional room types
+
+4. Fix Recommendation
+
+Explain exactly what is wrong and how it should be fixed.
+
+IMPORTANT:
+
+DO NOT CHANGE ANY CODE.
+DO NOT DEPLOY ANY FIX.
+DO NOT PROVIDE ASSUMPTIONS.
+
+Provide only an evidence-based technical audit with screenshots, database records, calculations, and code references.
