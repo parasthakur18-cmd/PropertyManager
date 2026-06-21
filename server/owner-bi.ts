@@ -2347,3 +2347,183 @@ export async function getDistinctRoomTypes(propertyIds?: number[]): Promise<stri
     .orderBy(rooms.roomType);
   return rows.map((r) => r.roomType).filter(Boolean) as string[];
 }
+
+// ─────────────────────────────────────────────
+// API: Room-wise ARR Analysis
+// Breaks down ARR by property + room type combination.
+// ─────────────────────────────────────────────
+
+export async function getRoomWiseArr(filters: OwnerBIFilters) {
+  const [billRows, propsWithRooms, allRoomRows] = await Promise.all([
+    getBillsInRange(filters),
+    getPropertiesWithRooms(filters.propertyIds),
+    db.select({
+      id: rooms.id,
+      roomType: rooms.roomType,
+      propertyId: rooms.propertyId,
+    }).from(rooms).where(
+      filters.propertyIds?.length
+        ? inArray(rooms.propertyId, filters.propertyIds)
+        : undefined
+    ),
+  ]);
+
+  const days = daysBetween(filters.startDate, filters.endDate);
+  const propMap = new Map(propsWithRooms.map((p) => [p.id, p]));
+
+  // Count physical rooms per (propertyId, roomType) key
+  const roomCountByKey: Record<string, number> = {};
+  for (const r of allRoomRows) {
+    const rt = r.roomType || "Unknown";
+    const key = `${r.propertyId}__${rt}`;
+    roomCountByKey[key] = (roomCountByKey[key] || 0) + 1;
+  }
+
+  // Aggregate bills by (propertyId, roomType)
+  type Bucket = {
+    propertyId: number;
+    propertyName: string;
+    roomType: string;
+    roomRevenue: number;
+    occupiedNights: number;
+    bookingSet: Set<number>;
+  };
+
+  const byKey: Record<string, Bucket> = {};
+  const seenBookings = new Set<number>();
+
+  for (const row of billRows) {
+    if (seenBookings.has(row.bookingId)) continue;
+    seenBookings.add(row.bookingId);
+
+    const rt = row.roomType || "Unknown";
+    const key = `${row.propertyId}__${rt}`;
+    const prop = propMap.get(row.propertyId);
+    if (!prop) continue;
+
+    if (!byKey[key]) {
+      byKey[key] = {
+        propertyId: row.propertyId,
+        propertyName: prop.name,
+        roomType: rt,
+        roomRevenue: 0,
+        occupiedNights: 0,
+        bookingSet: new Set(),
+      };
+    }
+
+    byKey[key].bookingSet.add(row.bookingId);
+    byKey[key].roomRevenue += num(row.roomCharges);
+    byKey[key].occupiedNights += occupiedNightsForBooking(
+      row.checkInDate,
+      row.checkOutDate,
+      filters.startDate,
+      filters.endDate
+    );
+  }
+
+  // Build per-property-per-room-type rows
+  const byPropertyAndRoomType = Object.values(byKey).map((b) => {
+    const roomCount = roomCountByKey[`${b.propertyId}__${b.roomType}`] || 0;
+    const availableNights = roomCount * days;
+    const arr = b.occupiedNights > 0 ? b.roomRevenue / b.occupiedNights : 0;
+    const revpar = availableNights > 0 ? b.roomRevenue / availableNights : 0;
+    const occupancyPct = availableNights > 0 ? (b.occupiedNights / availableNights) * 100 : 0;
+    return {
+      propertyId: b.propertyId,
+      propertyName: b.propertyName,
+      roomType: b.roomType,
+      roomCount,
+      bookings: b.bookingSet.size,
+      roomRevenue: b.roomRevenue,
+      occupiedNights: b.occupiedNights,
+      availableNights,
+      arr,
+      revpar,
+      occupancyPct,
+    };
+  }).sort((a, b) => b.arr - a.arr);
+
+  // Aggregate across properties by room type only
+  const rtAgg: Record<string, {
+    roomType: string;
+    roomCount: number;
+    roomRevenue: number;
+    occupiedNights: number;
+    bookings: number;
+  }> = {};
+
+  for (const row of byPropertyAndRoomType) {
+    if (!rtAgg[row.roomType]) {
+      rtAgg[row.roomType] = {
+        roomType: row.roomType,
+        roomCount: 0,
+        roomRevenue: 0,
+        occupiedNights: 0,
+        bookings: 0,
+      };
+    }
+    rtAgg[row.roomType].roomCount += row.roomCount;
+    rtAgg[row.roomType].roomRevenue += row.roomRevenue;
+    rtAgg[row.roomType].occupiedNights += row.occupiedNights;
+    rtAgg[row.roomType].bookings += row.bookings;
+  }
+
+  const byRoomType = Object.values(rtAgg).map((b) => {
+    const availableNights = b.roomCount * days;
+    const arr = b.occupiedNights > 0 ? b.roomRevenue / b.occupiedNights : 0;
+    const revpar = availableNights > 0 ? b.roomRevenue / availableNights : 0;
+    const occupancyPct = availableNights > 0 ? (b.occupiedNights / availableNights) * 100 : 0;
+    return { ...b, availableNights, arr, revpar, occupancyPct };
+  }).sort((a, b) => b.arr - a.arr);
+
+  // Aggregate across room types by property only
+  const propAgg: Record<number, {
+    propertyId: number;
+    propertyName: string;
+    roomRevenue: number;
+    occupiedNights: number;
+    bookings: number;
+    roomCount: number;
+  }> = {};
+
+  for (const row of byPropertyAndRoomType) {
+    if (!propAgg[row.propertyId]) {
+      propAgg[row.propertyId] = {
+        propertyId: row.propertyId,
+        propertyName: row.propertyName,
+        roomRevenue: 0,
+        occupiedNights: 0,
+        bookings: 0,
+        roomCount: 0,
+      };
+    }
+    propAgg[row.propertyId].roomRevenue += row.roomRevenue;
+    propAgg[row.propertyId].occupiedNights += row.occupiedNights;
+    propAgg[row.propertyId].bookings += row.bookings;
+    propAgg[row.propertyId].roomCount += row.roomCount;
+  }
+
+  const byProperty = Object.values(propAgg).map((b) => {
+    const availableNights = b.roomCount * days;
+    const arr = b.occupiedNights > 0 ? b.roomRevenue / b.occupiedNights : 0;
+    const revpar = availableNights > 0 ? b.roomRevenue / availableNights : 0;
+    const occupancyPct = availableNights > 0 ? (b.occupiedNights / availableNights) * 100 : 0;
+    return { ...b, availableNights, arr, revpar, occupancyPct };
+  }).sort((a, b) => b.arr - a.arr);
+
+  const topRoomTypeArr = byRoomType[0];
+  const topPropertyArr = byProperty[0];
+
+  return {
+    byPropertyAndRoomType,
+    byRoomType,
+    byProperty,
+    summary: {
+      topRoomTypeByArr: topRoomTypeArr?.roomType || "",
+      topPropertyByArr: topPropertyArr?.propertyName || "",
+      highestArr: topRoomTypeArr?.arr || 0,
+    },
+    period: `${filters.startDate} to ${filters.endDate}`,
+  };
+}

@@ -2407,6 +2407,272 @@ function ActionCenterTab({ filters }: { filters: FilterState }) {
   );
 }
 
+// ─── ARR Analysis Tab ─────────────────────────────────────────────────────────
+
+function ArrAnalysisTab({ filters }: { filters: FilterState }) {
+  const qp = buildQP(filters);
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["/api/owner/room-wise-arr", qp],
+    queryFn: () => fetch(`/api/owner/room-wise-arr${qp}`).then((r) => r.json()),
+  });
+
+  const byRoomType: any[] = data?.byRoomType || [];
+  const byProperty: any[] = data?.byProperty || [];
+  const byPropAndRoom: any[] = data?.byPropertyAndRoomType || [];
+  const summary = data?.summary || {};
+
+  const arrChartData = byRoomType.map((r: any) => ({
+    name: r.roomType,
+    ARR: Math.round(r.arr || 0),
+    RevPAR: Math.round(r.revpar || 0),
+    "Room Rev": Math.round(r.roomRevenue || 0),
+  }));
+
+  const propChartData = byProperty.map((p: any) => ({
+    name: p.propertyName?.split(" ").slice(0, 2).join(" "),
+    ARR: Math.round(p.arr || 0),
+    RevPAR: Math.round(p.revpar || 0),
+  }));
+
+  return (
+    <div className="space-y-5">
+      {/* Summary KPIs */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Best Room Type (ARR)</p>
+            <p className="text-sm font-bold mt-0.5 truncate">{summary.topRoomTypeByArr || "-"}</p>
+            {summary.highestArr > 0 && (
+              <p className="text-lg font-bold text-primary">{INR(summary.highestArr)}</p>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Best Property (ARR)</p>
+            <p className="text-sm font-bold mt-0.5 truncate">{summary.topPropertyByArr || "-"}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Room Types Tracked</p>
+            <p className="text-2xl font-bold mt-0.5">{byRoomType.length}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Charts side-by-side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">ARR &amp; RevPAR by Room Type</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? <Skeleton className="h-48 w-full" /> : (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={arrChartData} margin={{ left: 0, right: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                  <YAxis tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 10 }} />
+                  <Tooltip formatter={(v: any) => INR(Number(v))} />
+                  <Legend />
+                  <Bar dataKey="ARR" fill="#1E3A5F" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="RevPAR" fill="#2BB6A8" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">ARR &amp; RevPAR by Property</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? <Skeleton className="h-48 w-full" /> : (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={propChartData} margin={{ left: 0, right: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                  <YAxis tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 10 }} />
+                  <Tooltip formatter={(v: any) => INR(Number(v))} />
+                  <Legend />
+                  <Bar dataKey="ARR" fill="#1E3A5F" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="RevPAR" fill="#F2B705" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Room-type summary table */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Room Type-wise ARR Summary (All Properties)</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="text-xs">
+                  <TableHead>Room Type</TableHead>
+                  <TableHead className="text-right">Rooms</TableHead>
+                  <TableHead className="text-right">Bookings</TableHead>
+                  <TableHead className="text-right">Room Revenue</TableHead>
+                  <TableHead className="text-right">Occ. Nights</TableHead>
+                  <TableHead className="text-right">Avail. Nights</TableHead>
+                  <TableHead className="text-right">Occupancy %</TableHead>
+                  <TableHead className="text-right">ARR</TableHead>
+                  <TableHead className="text-right">RevPAR</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  [1, 2, 3].map((i) => (
+                    <TableRow key={i}>{Array(9).fill(0).map((_, j) => (
+                      <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
+                    ))}</TableRow>
+                  ))
+                ) : byRoomType.length === 0 ? (
+                  <TableRow><TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-8">No data for selected period</TableCell></TableRow>
+                ) : byRoomType.map((r: any, i: number) => (
+                  <TableRow key={r.roomType} className="text-xs hover:bg-muted/30">
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full inline-block" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
+                        {r.roomType}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">{r.roomCount}</TableCell>
+                    <TableCell className="text-right">{r.bookings}</TableCell>
+                    <TableCell className="text-right font-semibold">{INR(r.roomRevenue)}</TableCell>
+                    <TableCell className="text-right">{r.occupiedNights}</TableCell>
+                    <TableCell className="text-right">{r.availableNights}</TableCell>
+                    <TableCell className="text-right">
+                      <Badge variant={r.occupancyPct >= 70 ? "default" : r.occupancyPct >= 40 ? "secondary" : "destructive"} className="text-xs">
+                        {pct(r.occupancyPct)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-primary">{INR(r.arr)}</TableCell>
+                    <TableCell className="text-right">{INR(r.revpar)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Property-wise summary table */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Property-wise ARR Summary</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="text-xs">
+                  <TableHead>Property</TableHead>
+                  <TableHead className="text-right">Rooms</TableHead>
+                  <TableHead className="text-right">Bookings</TableHead>
+                  <TableHead className="text-right">Room Revenue</TableHead>
+                  <TableHead className="text-right">Occ. Nights</TableHead>
+                  <TableHead className="text-right">Avail. Nights</TableHead>
+                  <TableHead className="text-right">Occupancy %</TableHead>
+                  <TableHead className="text-right">ARR</TableHead>
+                  <TableHead className="text-right">RevPAR</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  [1, 2].map((i) => (
+                    <TableRow key={i}>{Array(9).fill(0).map((_, j) => (
+                      <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
+                    ))}</TableRow>
+                  ))
+                ) : byProperty.length === 0 ? (
+                  <TableRow><TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-8">No data for selected period</TableCell></TableRow>
+                ) : byProperty.map((p: any) => (
+                  <TableRow key={p.propertyId} className="text-xs hover:bg-muted/30">
+                    <TableCell className="font-medium whitespace-nowrap">{p.propertyName}</TableCell>
+                    <TableCell className="text-right">{p.roomCount}</TableCell>
+                    <TableCell className="text-right">{p.bookings}</TableCell>
+                    <TableCell className="text-right font-semibold">{INR(p.roomRevenue)}</TableCell>
+                    <TableCell className="text-right">{p.occupiedNights}</TableCell>
+                    <TableCell className="text-right">{p.availableNights}</TableCell>
+                    <TableCell className="text-right">
+                      <Badge variant={p.occupancyPct >= 70 ? "default" : p.occupancyPct >= 40 ? "secondary" : "destructive"} className="text-xs">
+                        {pct(p.occupancyPct)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-primary">{INR(p.arr)}</TableCell>
+                    <TableCell className="text-right">{INR(p.revpar)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Property + Room Type breakdown */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Property × Room Type Breakdown</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="text-xs">
+                  <TableHead>Property</TableHead>
+                  <TableHead>Room Type</TableHead>
+                  <TableHead className="text-right">Rooms</TableHead>
+                  <TableHead className="text-right">Bookings</TableHead>
+                  <TableHead className="text-right">Room Revenue</TableHead>
+                  <TableHead className="text-right">Occ. Nights</TableHead>
+                  <TableHead className="text-right">Occupancy %</TableHead>
+                  <TableHead className="text-right">ARR</TableHead>
+                  <TableHead className="text-right">RevPAR</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  [1, 2, 3, 4].map((i) => (
+                    <TableRow key={i}>{Array(9).fill(0).map((_, j) => (
+                      <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
+                    ))}</TableRow>
+                  ))
+                ) : byPropAndRoom.length === 0 ? (
+                  <TableRow><TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-8">No data for selected period</TableCell></TableRow>
+                ) : byPropAndRoom.map((r: any, i: number) => (
+                  <TableRow key={`${r.propertyId}-${r.roomType}`} className="text-xs hover:bg-muted/30">
+                    <TableCell className="font-medium whitespace-nowrap">{r.propertyName}</TableCell>
+                    <TableCell>{r.roomType}</TableCell>
+                    <TableCell className="text-right">{r.roomCount}</TableCell>
+                    <TableCell className="text-right">{r.bookings}</TableCell>
+                    <TableCell className="text-right font-semibold">{INR(r.roomRevenue)}</TableCell>
+                    <TableCell className="text-right">{r.occupiedNights}</TableCell>
+                    <TableCell className="text-right">
+                      <Badge variant={r.occupancyPct >= 70 ? "default" : r.occupancyPct >= 40 ? "secondary" : "destructive"} className="text-xs">
+                        {pct(r.occupancyPct)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-primary">{INR(r.arr)}</TableCell>
+                    <TableCell className="text-right">{INR(r.revpar)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ─── Source Intelligence Tab ──────────────────────────────────────────────────
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -3532,6 +3798,9 @@ export default function OwnerDashboard() {
           <TabsTrigger value="source-intel" className="text-xs" data-testid="tab-source-intel">
             <Network className="h-3 w-3 mr-1" />Source Intel
           </TabsTrigger>
+          <TabsTrigger value="arr-analysis" className="text-xs" data-testid="tab-arr-analysis">
+            📊 ARR Analysis
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="ceo"><CeoSummaryDashboard filters={filters} /></TabsContent>
@@ -3548,6 +3817,7 @@ export default function OwnerDashboard() {
         <TabsContent value="opportunity"><RevenueOpportunityTab filters={filters} /></TabsContent>
         <TabsContent value="actions"><ActionCenterTab filters={filters} /></TabsContent>
         <TabsContent value="source-intel"><SourceIntelligenceTab filters={filters} /></TabsContent>
+        <TabsContent value="arr-analysis"><ArrAnalysisTab filters={filters} /></TabsContent>
       </Tabs>
     </div>
   );

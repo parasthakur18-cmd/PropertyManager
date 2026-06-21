@@ -8354,6 +8354,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       getDailySnapshot,
       getRevenueForecast,
       getOwnerInsights,
+      getRoomWiseArr,
     } = await import("./owner-bi");
 
     const ownerAuthCheck = (req: any, res: any) => {
@@ -8479,6 +8480,17 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         res.json(data);
       } catch (e: any) {
         console.error("[Owner BI] /api/owner/insights", e);
+        res.status(500).json({ message: e.message || "Failed" });
+      }
+    });
+
+    app.get("/api/owner/room-wise-arr", isAuthenticated, async (req: any, res) => {
+      if (!ownerAuthCheck(req, res)) return;
+      try {
+        const data = await getRoomWiseArr(parseFilters(req));
+        res.json(data);
+      } catch (e: any) {
+        console.error("[Owner BI] /api/owner/room-wise-arr", e);
         res.status(500).json({ message: e.message || "Failed" });
       }
     });
