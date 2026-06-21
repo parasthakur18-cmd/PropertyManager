@@ -1,6 +1,6 @@
 ---
 name: AioSell inventory sync behavior
-description: How AioSell pull/push/stop-sell works, and known quirks with property 7 (Blue Mont Sojha)
+description: How AioSell pull/push/stop-sell works, and known quirks with the push count calculation
 ---
 
 ## Stop-sell restriction clearing
@@ -10,12 +10,13 @@ description: How AioSell pull/push/stop-sell works, and known quirks with proper
 
 **Fix (applied):** `const needsStopSellUpdate = inventoryUpdates;` — no filter, all ranges always pushed.
 
-## AioSell availability count mismatch
-**Rule:** AioSell's displayed count = Hostezee pushed count MINUS AioSell's own OTA bookings.
+## AioSell availability count — push value is ABSOLUTE, not adjusted
 
-**Why:** AioSell deducts its own OTA-sourced reservations from the pushed count. Hostezee excludes `source='aiosell'` bookings when computing push count. So both sides should agree, but AioSell shows lower if it has OTA bookings that are NOT imported into Hostezee.
+**Rule:** AioSell displays EXACTLY what Hostezee pushes. It does NOT subtract its own OTA bookings from the pushed value.
 
-**Fix:** Run "Pull Reservations from AioSell" in Channel Manager to import OTA bookings into Hostezee so they're reflected in the availability grid.
+**Why:** Confirmed live: Jun 26-27 showed 1 and 0 in AioSell's "Update Rooms" grid, and there were ZERO active bookings for those dates in Hostezee's DB — meaning those values are what Hostezee last pushed, not AioSell doing any internal deduction. The earlier "OTA deduction fix" that excluded `source='aiosell-*'` bookings from the push count was based on the WRONG assumption that AioSell subtracts its own bookings. That exclusion caused inventory to reopen after every OTA webhook booking (Hostezee would push `available=2` as if no booking existed, and AioSell would display 2 — the room never closed).
+
+**Fix (applied):** Removed the OTA exclusion entirely. `directBookings = activeBookings` — all bookings count toward reducing the push value regardless of source. Dorm and regular-room loops both use `activeBookings` now.
 
 ## Debug endpoint
 `/inventory-debug?propertyId=7` shows per-date per-room availability breakdown with booking IDs.

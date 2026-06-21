@@ -536,41 +536,12 @@ export async function autoSyncInventoryForProperty(
       )
     );
 
-    // ── OTA double-count prevention ────────────────────────────────────────────
-    // AioSell's "Update Available Rooms" page displays: (what Hostezee pushes) − (its own OTA bookings).
-    // If we also count AioSell-sourced bookings in our push, those guests get deducted TWICE,
-    // making AioSell show 0 when Hostezee shows 1.
-    // Fix: only count non-OTA (direct/manual) bookings when computing how many rooms are occupied.
-    // AioSell handles its own OTA bookings itself.
-    //
-    // ONLY bookings created by the AioSell webhook handler (source prefixed with "aiosell-")
-    // are excluded from the push count. Those bookings are already tracked inside AioSell's
-    // system and will be deducted by AioSell itself.
-    //
-    // Manually-entered bookings where staff type "Booking.com", "MMT" etc. as the source
-    // are NOT excluded — AioSell has no record of them and will not deduct them, so
-    // Hostezee must count them in the push. Excluding them causes the room to appear
-    // available on OTAs even though it is physically occupied (overbooking risk).
-    const isAiosellSourced = (src: string | null | undefined): boolean => {
-      if (!src || typeof src !== "string") return false;
-      return src.startsWith("aiosell-");
-    };
-
-    // Bookings that Hostezee should count:
-    // - ALWAYS count checked-in bookings regardless of source — a guest physically in the room
-    //   occupies it unconditionally. AioSell's double-deduction concern only applies to
-    //   pending/confirmed OTA reservations, not guests who are already checked in.
-    // - For confirmed/pending bookings, exclude AioSell-sourced ones (AioSell tracks those itself).
-    const directBookings = activeBookings.filter(b =>
-      b.status === "checked-in" || !isAiosellSourced(b.source)
-    );
-    // Booking IDs where TBS stays should be excluded from push count (AioSell tracks these itself)
-    const aiosellBookingIds = new Set(
-      activeBookings.filter(b => isAiosellSourced(b.source)).map(b => b.id)
-    );
-    if (aiosellBookingIds.size > 0) {
-      console.log(`[AIOSELL] OTA deduction fix: ${aiosellBookingIds.size} aiosell-sourced booking(s) excluded from push count (AioSell deducts these itself)`);
-    }
+    // Count ALL active bookings regardless of source.
+    // AioSell displays exactly what Hostezee pushes — it does NOT subtract its own OTA bookings
+    // on top of Hostezee's pushed value. Confirmed by live data: AioSell shows the pushed value
+    // verbatim, so every booking (webhook-sourced or manually entered) must be counted here to
+    // correctly reduce the push count and prevent inventory from reopening after OTA bookings arrive.
+    const directBookings = activeBookings;
 
     // Also fetch TBS room stays (no assigned roomId) to correctly reduce inventory
     // These represent rooms that are sold but not yet physically assigned
@@ -850,8 +821,7 @@ export async function autoSyncInventoryForProperty(
           // each room type's availability is made of.  Helps diagnose cases where
           // a room appears occupied in Hostezee but available is pushed as 1.
           if (d === 0) {
-            const aiosellExcluded = activeBookings.filter(b => isAiosellSourced(b.source) && b.status !== "checked-out");
-            const bookedList = directBookings.filter(b => {
+            const bookedList = activeBookings.filter(b => {
               const cin2 = new Date(b.checkInDate); cin2.setHours(0,0,0,0);
               const cout2 = new Date(b.checkOutDate); cout2.setHours(0,0,0,0);
               return cin2 <= date && date < cout2 && (
@@ -860,7 +830,7 @@ export async function autoSyncInventoryForProperty(
                 (confirmedStayRoomIdsByBookingId.get(b.id) || []).some((rid: number) => activeRoomIds.includes(rid))
               );
             });
-            const skippedDirect = directBookings.filter(b => {
+            const skippedBookings = activeBookings.filter(b => {
               const cin2 = new Date(b.checkInDate); cin2.setHours(0,0,0,0);
               const cout2 = new Date(b.checkOutDate); cout2.setHours(0,0,0,0);
               const overlaps = cin2 <= date && date < cout2;
@@ -872,9 +842,9 @@ export async function autoSyncInventoryForProperty(
             console.log(
               `[INV_DEBUG] property=${propertyId} roomCode=${mapping.aiosellRoomCode} date=${dateStr}` +
               ` | activeRooms=[${activeRoomIds.join(",")}] blocked=[${blockedRoomIds.join(",")}]` +
-              ` | totalDirect=${directBookings.length} ota_excluded=${aiosellExcluded.length}` +
+              ` | totalActive=${activeBookings.length}` +
               ` | countedBookings=${bookedList.length}(ids:[${bookedList.map(b=>b.id).join(",")}])` +
-              ` | skippedDirect=${skippedDirect.length}(ids:[${skippedDirect.map(b=>b.id+" cin="+new Date(b.checkInDate).toISOString().slice(0,10)+" cout="+b.checkOutDate+" roomId="+b.roomId+" src="+b.source).join(" | ")}])` +
+              ` | skipped=${skippedBookings.length}(ids:[${skippedBookings.map(b=>b.id+" cin="+new Date(b.checkInDate).toISOString().slice(0,10)+" cout="+b.checkOutDate+" roomId="+b.roomId+" src="+b.source).join(" | ")}])` +
               ` | bookedRoomIds=[${[...bookedRoomIds].join(",")}] tbs=${tbsCount}` +
               ` | physAvail=${physicallyAvailable} available=${available}`
             );
