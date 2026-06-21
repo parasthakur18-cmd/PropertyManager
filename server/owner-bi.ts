@@ -1139,8 +1139,14 @@ export async function getRevenueLeakage(filters: OwnerBIFilters) {
 
   const totalUnsoldNights = unsoldByProp.reduce((s, p) => s + p.unsoldNights, 0);
   const totalAvailableNights = unsoldByProp.reduce((s, p) => s + p.availableNights, 0);
-  const avgArr = unsoldByProp.reduce((s, p) => s + p.arr, 0) / Math.max(1, unsoldByProp.length);
   const totalPotentialLoss = unsoldByProp.reduce((s, p) => s + p.potentialRevenueLoss, 0);
+  // Weighted average ARR — totalPotentialLoss / totalUnsoldNights so that Unsold × Avg ARR = Potential Loss
+  const totalOccupiedNightsAll = unsoldByProp.reduce((s, p) => s + p.occupiedNights, 0);
+  const totalRoomRevenueAll = unsoldByProp.reduce(
+    (s, p) => s + p.arr * p.occupiedNights,
+    0
+  );
+  const avgArr = totalOccupiedNightsAll > 0 ? totalRoomRevenueAll / totalOccupiedNightsAll : 0;
 
   return {
     cancelled: {
