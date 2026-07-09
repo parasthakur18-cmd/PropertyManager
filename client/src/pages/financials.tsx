@@ -194,9 +194,12 @@ export default function Financials() {
           ? "Group Booking" 
           : "Single Room";
       
+      // Phone formatted so Excel treats it as text (apostrophe prefix)
+      const phoneText = guest?.phone ? `'${guest.phone}` : "";
+
       return [
         booking.id,
-        booking.createdAt ? format(new Date(booking.createdAt), "yyyy-MM-dd HH:mm") : "",
+        booking.createdAt ? format(new Date(booking.createdAt), "dd-MMM-yyyy HH:mm") : "",
         property?.name || "",
         roomNumbers,
         roomType,
@@ -204,10 +207,10 @@ export default function Financials() {
         bookingType,
         booking.bedsBooked || "",
         guest?.fullName || "",
-        guest?.phone || "",
+        phoneText,
         guest?.email || "",
-        format(checkIn, "dd-MM-yyyy"),
-        format(checkOut, "dd-MM-yyyy"),
+        format(checkIn, "dd-MMM-yyyy"),
+        format(checkOut, "dd-MMM-yyyy"),
         nights,
         booking.status,
         booking.numberOfGuests,
@@ -235,13 +238,12 @@ export default function Financials() {
       ];
     });
 
-    // Create CSV content
+    // Create CSV content with UTF-8 BOM so Excel opens dates/text correctly
     const csvContent = [headers, ...rows]
-      .map((row) => row.map(cell => `"${cell}"`).join(","))
+      .map((row) => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
       .join("\n");
-    
-    // Download file
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const BOM = "\uFEFF";
+    const blob = new Blob([BOM + csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
