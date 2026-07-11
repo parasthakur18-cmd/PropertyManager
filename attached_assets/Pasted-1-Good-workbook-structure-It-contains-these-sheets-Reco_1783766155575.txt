@@ -1,0 +1,330 @@
+1. Good workbook structure
+
+It contains these sheets:
+
+✅ Reconciliation
+✅ Unmatched Bookings
+✅ Unmatched Bank Credits
+✅ Possible Duplicates
+✅ Summary
+✅ Property Breakdown
+
+This is a good foundation.
+
+2. Reconciliation sheet
+
+It already includes useful columns:
+
+Booking ID
+Property
+Guest Name
+Guest Phone
+Check-in
+Check-out
+Room Revenue
+Food Revenue
+Total Bill
+Advance Paid
+Balance Due
+Bank Date
+Bank Narration
+Bank Reference
+Bank Amount
+Difference
+Payment Type
+Confidence
+Status
+Match Reasons
+
+This is exactly the direction I would take.
+
+Example:
+
+Guest: Vikash Karthik
+
+Total Bill: ₹620
+
+Bank Amount: ₹620
+
+Status:
+
+Auto Matched
+
+Reason:
+
+Exact total match, Same day checkout, Name matched, Payment method matched.
+
+Excellent.
+
+3. Match Reasons
+
+I like this.
+
+Instead of just saying
+
+90%
+
+it explains
+
+Exact amount
+Same day
+Name matched
+Phone matched
+
+That builds confidence.
+
+Things that need improvement
+1. Unmatched Bank Credits
+
+There are
+
+1497 rows
+
+This is too high.
+
+Instead of
+
+Possible Category
+
+it should show
+
+| Suggested Booking | Confidence | Reason |
+
+For example
+
+₹5457
+
+Narration
+
+JIBHI ROOM
+
+↓
+
+Possible Matches
+
+Booking 2105
+
+Guest Rahul
+
+92%
+
+Booking 2108
+
+Guest Aman
+
+84%
+
+Currently it only says
+
+Possible Room Payment
+
+That is not enough.
+
+2. Property Breakdown
+
+Currently
+
+Property
+
+Bookings
+
+Room Revenue
+
+Matched
+
+Difference
+
+Instead I would like
+
+Property
+
+Bank Credits
+
+Room Revenue
+
+Food Revenue
+
+Cash
+
+OTA
+
+Pending
+
+Matched %
+
+That gives a finance dashboard.
+
+3. Dashboard
+
+There isn't a real dashboard.
+
+I want
+
+Total Credits
+
+Total Debits
+
+Matched %
+
+Pending
+
+Cash
+
+OTA
+
+Refund
+
+Expenses
+
+Room Revenue
+
+Food Revenue
+
+Net Collection
+
+4. Manual Review Sheet
+
+Missing.
+
+Instead of opening Reconciliation and filtering,
+
+there should be
+
+Manual Review
+
+Only
+
+Medium
+
+Low
+
+Unknown
+
+transactions.
+
+This is where accountant spends time.
+
+5. Split Payments
+
+Example
+
+Booking
+
+₹10,000
+
+Received
+
+₹4000
+
+₹6000
+
+Should automatically show
+
+Split Payment
+
+Currently I don't see a dedicated sheet.
+
+6. Combined Payments
+
+Guest pays
+
+₹12,000
+
+Room
+
+₹10,000
+
+Restaurant
+
+₹2000
+
+Need one sheet showing
+
+Bank Entry
+
+↓
+
+Allocation
+
+Room
+
+Food
+
+7. Revenue Allocation
+
+I would like to see
+
+Room
+
+₹7000
+
+Food
+
+₹1500
+
+instead of just
+
+Total
+
+₹8500
+
+This helps accounting.
+
+8. Duplicate Detection
+
+535 duplicates is too many.
+
+Need better logic.
+
+Currently
+
+Same Ref
+
+↓
+
+Duplicate
+
+But
+
+Same UTR
+
+doesn't always mean duplicate.
+
+Need
+
+Same Ref
+
+Same Amount
+
+Same Date
+
+Already Linked
+
+Then duplicate.
+
+My biggest suggestion
+
+I think every bank transaction should have one complete row like this:
+
+Bank Date	Narration	Amount	Guest	Booking	Property	Room Rev	Food Rev	Advance	Balance	UTR	Match %	Match Reason	Final Status
+
+That becomes the master reconciliation sheet.
+
+Everything else (dashboard, duplicates, summaries) can be generated from it.
+
+Final Verdict
+
+I would not rebuild it from scratch.
+
+Instead, I would ask Replit to improve this workbook, because the core logic is already in place.
+
+The next version should focus on:
+
+Better unmatched suggestions.
+Split and combined payment handling.
+A dedicated Manual Review sheet.
+A finance dashboard.
+More intelligent duplicate detection.
+Richer revenue allocation.
+
+With those improvements, this could become a very strong finance reconciliation module for Hostezee.
