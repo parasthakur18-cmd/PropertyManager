@@ -18,3 +18,9 @@ id = "-zi_VYWc6xHEpEmCwVpjW"
 uri = "file://attached_assets/Hostezee_Reconciliation_v2_Apr-Jul2026.xlsx"
 type = "table"
 title = "Hostezee Reconciliation v2 — Both Bank Accounts, Apr–Jul 2026"
+
+[[outputs]]
+id = "71PnKK4Jn14gvTbOcF8QP"
+uri = "file://attached_assets/Hostezee_Reconciliation_v3_1Apr-11Jul2026.xlsx"
+type = "table"
+title = "Hostezee Reconciliation v3 — 1 Apr to 11 Jul 2026 (Both Accounts)"
