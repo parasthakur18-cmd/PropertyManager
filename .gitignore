@@ -1,5 +1,4 @@
 node_modules
-dist
 .local/ssh/
 .DS_Store
 server/public
