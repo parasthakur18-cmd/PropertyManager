@@ -987,6 +987,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── CORS for all /api/public/* routes ────────────────────────────────────────
+  // Allows any external website (Lovable, custom hotel sites, etc.) to call the
+  // public booking API directly from the browser without a proxy.
+  app.use("/api/public", (req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept");
+    if (req.method === "OPTIONS") return res.status(204).end();
+    next();
+  });
+
   // Public Menu - for guest ordering
   // Public menu categories (no auth required)
   // Public properties list (for café orders to select property)
