@@ -42,6 +42,8 @@ import {
   Users2,
   CalendarPlus,
   LineChart,
+  Megaphone,
+  KeyRound,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -126,6 +128,12 @@ const adminAnalyticsItems = [
   { title: "Performance", url: "/performance", icon: BarChart3 },
 ];
 
+const adminMarketingItems = [
+  { title: "Website Leads", url: "/marketing/leads", icon: Globe },
+  { title: "Website Analytics", url: "/marketing/analytics", icon: BarChart3 },
+  { title: "API Management", url: "/marketing/api-management", icon: KeyRound },
+];
+
 const adminAdminItems = [
   { title: "Enquiries", url: "/enquiries", icon: MessageSquare },
   { title: "Travel Agents", url: "/travel-agents", icon: Briefcase },
@@ -207,6 +215,7 @@ export function AppSidebar() {
           financeItems: cafeFinanceItems,
           staffItems: adminStaffItems,
           analyticsItems: [],
+          marketingItems: adminMarketingItems,
           adminItems: cafeAdminItems,
         };
       }
@@ -219,6 +228,7 @@ export function AppSidebar() {
         financeItems: adminFinanceItems,
         staffItems: adminStaffItems,
         analyticsItems: adminAnalyticsItems,
+        marketingItems: adminMarketingItems,
         adminItems: adminAdminItems,
       };
     }
@@ -233,6 +243,7 @@ export function AppSidebar() {
         financeItems: [],
         staffItems: [],
         analyticsItems: [],
+        marketingItems: [],
         adminItems: [],
       };
     }
@@ -315,6 +326,7 @@ export function AppSidebar() {
       financeItems,
       staffItems,
       analyticsItems: [],
+      marketingItems: [],
       adminItems,
     };
   };
@@ -452,7 +464,10 @@ export function AppSidebar() {
         {/* 8. Analytics */}
         {isNotKitchenOrSuper && renderSection("Analytics", menuConfig.analyticsItems)}
 
-        {/* 9. Admin / Control */}
+        {/* 9. Marketing */}
+        {isNotKitchenOrSuper && renderSection("Marketing", menuConfig.marketingItems)}
+
+        {/* 10. Admin / Control */}
         {isNotKitchenOrSuper && renderSection("Admin / Control", menuConfig.adminItems)}
       </SidebarContent>
 

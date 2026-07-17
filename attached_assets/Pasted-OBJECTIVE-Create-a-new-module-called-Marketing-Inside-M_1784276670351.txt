@@ -1,0 +1,481 @@
+OBJECTIVE
+
+Create a new module called:
+
+Marketing
+
+Inside Marketing create:
+
+Website Leads
+Website Analytics
+API Management
+
+Hostezee will become the single source of truth for all website enquiries.
+
+DATABASE
+
+Create the following tables.
+
+website_leads
+
+Fields:
+
+id (UUID)
+property_id
+property_name
+website
+guest_name
+mobile_number
+email
+adults
+children
+room_type
+check_in
+check_out
+total_nights
+enquiry_source
+landing_page
+referrer
+utm_source
+utm_medium
+utm_campaign
+device_type
+browser
+operating_system
+lead_status
+assigned_to
+remarks
+enquiry_count
+first_enquiry
+last_enquiry
+created_at
+updated_at
+website_lead_history
+
+Store every action.
+
+Fields
+
+id
+lead_id
+action
+old_value
+new_value
+changed_by
+created_at
+
+Example
+
+Status changed
+
+Notes added
+
+Assigned changed
+
+Duplicate enquiry detected
+
+website_api_keys
+
+Fields
+
+id
+property_name
+api_key
+api_secret (hashed)
+status
+created_at
+last_used_at
+
+Each hotel website must have its own API Key.
+
+NEW MENU
+
+Marketing
+
+├── Website Leads
+
+├── Website Analytics
+
+└── API Management
+
+WEBSITE LEADS
+
+Create a CRM.
+
+Columns
+
+Date
+Property
+Guest Name
+Mobile
+Check-in
+Check-out
+Room
+Source
+Status
+Assigned To
+
+Actions
+
+View
+
+Edit
+
+Notes
+
+Timeline
+
+SEARCH
+
+Search by
+
+Guest Name
+
+Mobile
+
+Email
+
+FILTERS
+
+Property
+
+Status
+
+Date
+
+Room Type
+
+Source
+
+Assigned User
+
+STATUS
+
+Support
+
+New
+
+Contacted
+
+Quoted
+
+Follow-up
+
+Converted
+
+Lost
+
+Cancelled
+
+NOTES
+
+Internal Notes
+
+Timestamp
+
+User Name
+
+TIMELINE
+
+Every lead should maintain complete history.
+
+Example
+
+Lead Created
+
+Status Updated
+
+Note Added
+
+Assigned to Manager
+
+Converted
+
+Lost
+
+Everything should be visible.
+
+DUPLICATE DETECTION
+
+If same mobile enquires again
+
+Do NOT create duplicate lead.
+
+Instead
+
+Increase enquiry_count
+
+Update last_enquiry
+
+Keep first_enquiry unchanged
+
+Save event in history
+
+WEBSITE ANALYTICS
+
+Dashboard cards
+
+Today's Leads
+
+Yesterday
+
+Weekly
+
+Monthly
+
+Yearly
+
+Charts
+
+Daily Leads
+
+Monthly Leads
+
+Property-wise Leads
+
+Lead Source
+
+Conversion Funnel
+
+Status Distribution
+
+Most Requested Room
+
+Reports
+
+Most Popular Property
+
+Best Conversion Property
+
+Average Stay
+
+Average Response Time
+
+Lead Source Performance
+
+EXPORT
+
+Export
+
+CSV
+
+Excel
+
+PDF
+
+ASSIGNMENT
+
+Allow assigning leads to
+
+Admin
+
+Manager
+
+Staff
+
+Track who owns every lead.
+
+NOTIFICATIONS
+
+Whenever a new website enquiry arrives
+
+Create notification inside Hostezee.
+
+Future-ready for
+
+WhatsApp
+
+Email
+
+Push Notification
+
+ROLE PERMISSIONS
+
+Super Admin
+
+Full Access
+
+Admin
+
+Manage all assigned properties
+
+Manager
+
+Manage assigned leads
+
+Staff
+
+View assigned leads only
+
+Guest
+
+No access
+
+API MANAGEMENT
+
+Create a page
+
+Marketing
+
+API Management
+
+Generate
+
+API Key
+
+Revoke
+
+API Key
+
+Rotate
+
+API Key
+
+View Last Usage
+
+WEBSITE API
+
+Create secure REST API.
+
+POST
+
+/api/v1/website-leads
+
+Authentication
+
+Bearer Token
+
+(API Key)
+
+Accept JSON
+
+Example
+
+{
+"property_name":"The Woodpecker Inn",
+"website":"https://thewoodpeckerinn.in",
+"guest_name":"John",
+"mobile_number":"9876543210",
+"email":"",
+"check_in":"2026-08-01",
+"check_out":"2026-08-03",
+"adults":2,
+"children":1,
+"room_type":"King Room",
+"landing_page":"https://thewoodpeckerinn.in",
+"utm_source":"google",
+"utm_medium":"organic",
+"utm_campaign":"",
+"device_type":"mobile",
+"browser":"Chrome"
+}
+
+Response
+
+{
+"success":true,
+"lead_id":"UUID",
+"message":"Lead created successfully"
+}
+
+Return proper validation errors.
+
+SECURITY
+
+Rate limit API.
+
+Validate all fields.
+
+Protect against SQL Injection.
+
+Protect against XSS.
+
+Never expose secrets.
+
+Log every API request.
+
+PERFORMANCE
+
+Index all searchable columns.
+
+Use pagination.
+
+Lazy load dashboard.
+
+Optimize queries.
+
+FUTURE INTEGRATION
+
+The websites should never access the database directly.
+
+Only the API can create leads.
+
+Future websites should only require:
+
+API URL
+API Key
+
+No code changes inside Hostezee.
+
+DELIVERABLES
+
+When complete, provide me with:
+
+1.
+
+The API Endpoint
+
+Example
+
+https://hostezee.in/api/v1/website-leads
+
+2.
+
+Authentication Method
+
+Bearer Token
+
+or
+
+API Key
+
+3.
+
+Complete API Documentation
+
+Headers
+
+Required Fields
+
+Optional Fields
+
+Response Examples
+
+Error Responses
+
+Validation Rules
+
+4.
+
+Sample JSON Request
+
+5.
+
+Sample JSON Response
+
+6.
+
+Test Endpoint
+
+So I can verify using Postman before integrating with the websites.
+
+7.
+
+Generate one API Key for
+
+The Woodpecker Inn
+
+Leave support for additional API keys for:
+
+The Forest Pinnacle
+The Blue Mont Sojha

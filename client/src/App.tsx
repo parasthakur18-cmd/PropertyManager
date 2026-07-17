@@ -100,6 +100,9 @@ const FeatureSettings = lazy(() => import("@/pages/feature-settings"));
 const WhatsAppTemplates = lazy(() => import("@/pages/whatsapp-templates"));
 const AnalyticsChat = lazy(() => import("@/pages/analytics-chat"));
 const OwnerDashboard = lazy(() => import("@/pages/owner-dashboard"));
+const WebsiteLeads = lazy(() => import("@/pages/website-leads"));
+const WebsiteAnalytics = lazy(() => import("@/pages/website-analytics"));
+const ApiManagement = lazy(() => import("@/pages/api-management"));
 import { ErrorBoundary } from "@/components/error-boundary";
 
 import { CompletionNotifications } from "@/components/completion-notifications";
@@ -242,6 +245,9 @@ function Router({ showDashboard }: { showDashboard: boolean }) {
           <Route path="/whatsapp-templates" component={WhatsAppTemplates} />
           <Route path="/settings" component={Settings} />
           <Route path="/feature-settings" component={FeatureSettings} />
+          <Route path="/marketing/leads" component={WebsiteLeads} />
+          <Route path="/marketing/analytics" component={WebsiteAnalytics} />
+          <Route path="/marketing/api-management" component={ApiManagement} />
         </>
       ) : (
         <Route path="/" component={Home} />

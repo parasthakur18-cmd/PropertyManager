@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, integer, text, timestamp, decimal, boolean, date, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, integer, text, timestamp, decimal, boolean, date, jsonb, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -2250,4 +2250,71 @@ export const propertyInventoryCertifications = pgTable("property_inventory_certi
 });
 export const insertPropertyInventoryCertificationSchema = createInsertSchema(propertyInventoryCertifications).omit({ id: true, certifiedAt: true });
 export type PropertyInventoryCertification = typeof propertyInventoryCertifications.$inferSelect;
+
+// ─────────────────────────────────────────────────────────────────
+// Marketing Module — Website Leads, History, API Keys
+// ─────────────────────────────────────────────────────────────────
+
+export const websiteLeads = pgTable("website_leads", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  propertyId: integer("property_id"),
+  propertyName: varchar("property_name", { length: 255 }),
+  website: varchar("website", { length: 512 }),
+  guestName: varchar("guest_name", { length: 255 }),
+  mobileNumber: varchar("mobile_number", { length: 20 }),
+  email: varchar("email", { length: 255 }),
+  adults: integer("adults").default(1),
+  children: integer("children").default(0),
+  roomType: varchar("room_type", { length: 255 }),
+  checkIn: date("check_in"),
+  checkOut: date("check_out"),
+  totalNights: integer("total_nights"),
+  enquirySource: varchar("enquiry_source", { length: 100 }).default("website"),
+  landingPage: varchar("landing_page", { length: 512 }),
+  referrer: varchar("referrer", { length: 512 }),
+  utmSource: varchar("utm_source", { length: 255 }),
+  utmMedium: varchar("utm_medium", { length: 255 }),
+  utmCampaign: varchar("utm_campaign", { length: 255 }),
+  deviceType: varchar("device_type", { length: 50 }),
+  browser: varchar("browser", { length: 100 }),
+  operatingSystem: varchar("operating_system", { length: 100 }),
+  leadStatus: varchar("lead_status", { length: 50 }).notNull().default("new"),
+  assignedTo: varchar("assigned_to", { length: 255 }),
+  remarks: text("remarks"),
+  enquiryCount: integer("enquiry_count").notNull().default(1),
+  firstEnquiry: timestamp("first_enquiry").defaultNow(),
+  lastEnquiry: timestamp("last_enquiry").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertWebsiteLeadSchema = createInsertSchema(websiteLeads).omit({ id: true, createdAt: true, updatedAt: true, firstEnquiry: true, lastEnquiry: true, enquiryCount: true });
+export type WebsiteLead = typeof websiteLeads.$inferSelect;
+export type InsertWebsiteLead = z.infer<typeof insertWebsiteLeadSchema>;
+
+export const websiteLeadHistory = pgTable("website_lead_history", {
+  id: serial("id").primaryKey(),
+  leadId: uuid("lead_id").notNull().references(() => websiteLeads.id, { onDelete: "cascade" }),
+  action: varchar("action", { length: 100 }).notNull(),
+  oldValue: text("old_value"),
+  newValue: text("new_value"),
+  changedBy: varchar("changed_by", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertWebsiteLeadHistorySchema = createInsertSchema(websiteLeadHistory).omit({ id: true, createdAt: true });
+export type WebsiteLeadHistory = typeof websiteLeadHistory.$inferSelect;
+export type InsertWebsiteLeadHistory = z.infer<typeof insertWebsiteLeadHistorySchema>;
+
+export const websiteApiKeys = pgTable("website_api_keys", {
+  id: serial("id").primaryKey(),
+  propertyName: varchar("property_name", { length: 255 }).notNull(),
+  propertyId: integer("property_id"),
+  apiKey: varchar("api_key", { length: 128 }).notNull().unique(),
+  apiSecretHash: varchar("api_secret_hash", { length: 255 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow(),
+  lastUsedAt: timestamp("last_used_at"),
+});
+export const insertWebsiteApiKeySchema = createInsertSchema(websiteApiKeys).omit({ id: true, createdAt: true, lastUsedAt: true });
+export type WebsiteApiKey = typeof websiteApiKeys.$inferSelect;
+export type InsertWebsiteApiKey = z.infer<typeof insertWebsiteApiKeySchema>;
 export type InsertPropertyInventoryCertification = z.infer<typeof insertPropertyInventoryCertificationSchema>;

@@ -143,6 +143,14 @@ import {
   tableReservations,
   type TableReservation,
   type InsertTableReservation,
+  websiteLeads,
+  websiteLeadHistory,
+  websiteApiKeys,
+  type WebsiteLead,
+  type InsertWebsiteLead,
+  type WebsiteLeadHistory,
+  type InsertWebsiteLeadHistory,
+  type WebsiteApiKey,
 } from "@shared/schema";
 import { db, pool } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray, isNull, isNotNull } from "drizzle-orm";
@@ -522,6 +530,30 @@ export interface IStorage {
   recordLeasePaymentToWallet(propertyId: number, paymentId: number, amount: number, paymentMethod: string, description: string, userId: string | null): Promise<WalletTransaction | null>;
   recordVendorPaymentToWallet(propertyId: number, paymentId: number, amount: number, paymentMethod: string, vendorName: string, userId: string | null): Promise<WalletTransaction | null>;
   recordExtraServicePaymentToWallet(propertyId: number, serviceId: number, amount: number, paymentMethod: string, description: string, userId: string | null): Promise<WalletTransaction | null>;
+
+  // Marketing — Website Leads
+  getWebsiteLeadsPaginated(params: { limit: number; offset: number; search?: string; propertyId?: number; status?: string; dateFrom?: string; dateTo?: string; roomType?: string; assignedTo?: string; source?: string; propertyIds?: number[] }): Promise<{ data: WebsiteLead[]; total: number }>;
+  getWebsiteLead(id: string): Promise<WebsiteLead | undefined>;
+  createWebsiteLead(lead: InsertWebsiteLead): Promise<WebsiteLead>;
+  updateWebsiteLead(id: string, lead: Partial<InsertWebsiteLead>): Promise<WebsiteLead>;
+  deleteWebsiteLead(id: string): Promise<void>;
+  findWebsiteLeadByMobile(mobile: string, propertyName: string): Promise<WebsiteLead | undefined>;
+
+  // Marketing — Lead History
+  getLeadHistory(leadId: string): Promise<WebsiteLeadHistory[]>;
+  addLeadHistory(entry: InsertWebsiteLeadHistory): Promise<WebsiteLeadHistory>;
+
+  // Marketing — API Keys
+  getAllWebsiteApiKeys(): Promise<WebsiteApiKey[]>;
+  getWebsiteApiKey(id: number): Promise<WebsiteApiKey | undefined>;
+  getWebsiteApiKeyByKey(apiKey: string): Promise<WebsiteApiKey | undefined>;
+  createWebsiteApiKey(data: { propertyName: string; propertyId?: number; apiKey: string; apiSecretHash: string }): Promise<WebsiteApiKey>;
+  updateWebsiteApiKeyStatus(id: number, status: string): Promise<WebsiteApiKey>;
+  touchWebsiteApiKey(id: number): Promise<void>;
+  deleteWebsiteApiKey(id: number): Promise<void>;
+
+  // Marketing — Analytics
+  getWebsiteLeadAnalytics(propertyIds?: number[]): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1213,13 +1245,13 @@ export class DatabaseStorage implements IStorage {
 
   async reorderMenuItems(updates: { id: number; displayOrder: number }[]): Promise<void> {
     if (updates.length === 0) return;
-    await Promise.all(
-      updates.map(u =>
-        db.update(menuItems)
+    await db.transaction(async (tx) => {
+      for (const u of updates) {
+        await tx.update(menuItems)
           .set({ displayOrder: u.displayOrder, updatedAt: new Date() })
-          .where(eq(menuItems.id, u.id))
-      )
-    );
+          .where(eq(menuItems.id, u.id));
+      }
+    });
   }
 
   // Menu Category operations
@@ -1321,13 +1353,13 @@ export class DatabaseStorage implements IStorage {
 
   async reorderMenuCategories(updates: { id: number; displayOrder: number }[]): Promise<void> {
     if (updates.length === 0) return;
-    await Promise.all(
-      updates.map(u =>
-        db.update(menuCategories)
+    await db.transaction(async (tx) => {
+      for (const u of updates) {
+        await tx.update(menuCategories)
           .set({ displayOrder: u.displayOrder, updatedAt: new Date() })
-          .where(eq(menuCategories.id, u.id))
-      )
-    );
+          .where(eq(menuCategories.id, u.id));
+      }
+    });
   }
 
   // Menu Item Variant operations
@@ -6423,6 +6455,197 @@ export class DatabaseStorage implements IStorage {
         eq(salaryCorrections.month, month)
       )
     ).orderBy(desc(salaryCorrections.createdAt));
+  }
+
+  // ── Marketing: Website Leads ──────────────────────────────────────────────
+
+  async getWebsiteLeadsPaginated(params: {
+    limit: number; offset: number; search?: string; propertyId?: number;
+    status?: string; dateFrom?: string; dateTo?: string; roomType?: string;
+    assignedTo?: string; source?: string; propertyIds?: number[];
+  }): Promise<{ data: WebsiteLead[]; total: number }> {
+    const conditions: any[] = [];
+    if (params.search) {
+      const q = `%${params.search}%`;
+      conditions.push(
+        or(
+          sql`${websiteLeads.guestName} ILIKE ${q}`,
+          sql`${websiteLeads.mobileNumber} ILIKE ${q}`,
+          sql`${websiteLeads.email} ILIKE ${q}`,
+        )
+      );
+    }
+    if (params.propertyId) conditions.push(eq(websiteLeads.propertyId, params.propertyId));
+    if (params.propertyIds && params.propertyIds.length > 0) conditions.push(inArray(websiteLeads.propertyId, params.propertyIds));
+    if (params.status) conditions.push(eq(websiteLeads.leadStatus, params.status));
+    if (params.roomType) conditions.push(eq(websiteLeads.roomType, params.roomType));
+    if (params.assignedTo) conditions.push(eq(websiteLeads.assignedTo, params.assignedTo));
+    if (params.source) conditions.push(eq(websiteLeads.enquirySource, params.source));
+    if (params.dateFrom) conditions.push(gte(websiteLeads.createdAt, new Date(params.dateFrom)));
+    if (params.dateTo) {
+      const to = new Date(params.dateTo);
+      to.setDate(to.getDate() + 1);
+      conditions.push(lt(websiteLeads.createdAt, to));
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(websiteLeads).where(where);
+    const data = await db.select().from(websiteLeads).where(where)
+      .orderBy(desc(websiteLeads.lastEnquiry))
+      .limit(params.limit).offset(params.offset);
+    return { data, total: count };
+  }
+
+  async getWebsiteLead(id: string): Promise<WebsiteLead | undefined> {
+    const [lead] = await db.select().from(websiteLeads).where(eq(websiteLeads.id, id));
+    return lead;
+  }
+
+  async createWebsiteLead(lead: InsertWebsiteLead): Promise<WebsiteLead> {
+    const [created] = await db.insert(websiteLeads).values(lead).returning();
+    return created;
+  }
+
+  async updateWebsiteLead(id: string, lead: Partial<InsertWebsiteLead>): Promise<WebsiteLead> {
+    const [updated] = await db.update(websiteLeads)
+      .set({ ...lead, updatedAt: new Date() })
+      .where(eq(websiteLeads.id, id)).returning();
+    return updated;
+  }
+
+  async deleteWebsiteLead(id: string): Promise<void> {
+    await db.delete(websiteLeads).where(eq(websiteLeads.id, id));
+  }
+
+  async findWebsiteLeadByMobile(mobile: string, propertyName: string): Promise<WebsiteLead | undefined> {
+    const [lead] = await db.select().from(websiteLeads)
+      .where(and(eq(websiteLeads.mobileNumber, mobile), eq(websiteLeads.propertyName, propertyName)));
+    return lead;
+  }
+
+  // ── Marketing: Lead History ───────────────────────────────────────────────
+
+  async getLeadHistory(leadId: string): Promise<WebsiteLeadHistory[]> {
+    return db.select().from(websiteLeadHistory)
+      .where(eq(websiteLeadHistory.leadId, leadId))
+      .orderBy(desc(websiteLeadHistory.createdAt));
+  }
+
+  async addLeadHistory(entry: InsertWebsiteLeadHistory): Promise<WebsiteLeadHistory> {
+    const [created] = await db.insert(websiteLeadHistory).values(entry).returning();
+    return created;
+  }
+
+  // ── Marketing: API Keys ───────────────────────────────────────────────────
+
+  async getAllWebsiteApiKeys(): Promise<WebsiteApiKey[]> {
+    return db.select().from(websiteApiKeys).orderBy(desc(websiteApiKeys.createdAt));
+  }
+
+  async getWebsiteApiKey(id: number): Promise<WebsiteApiKey | undefined> {
+    const [key] = await db.select().from(websiteApiKeys).where(eq(websiteApiKeys.id, id));
+    return key;
+  }
+
+  async getWebsiteApiKeyByKey(apiKey: string): Promise<WebsiteApiKey | undefined> {
+    const [key] = await db.select().from(websiteApiKeys).where(eq(websiteApiKeys.apiKey, apiKey));
+    return key;
+  }
+
+  async createWebsiteApiKey(data: { propertyName: string; propertyId?: number; apiKey: string; apiSecretHash: string }): Promise<WebsiteApiKey> {
+    const [created] = await db.insert(websiteApiKeys).values({
+      propertyName: data.propertyName,
+      propertyId: data.propertyId,
+      apiKey: data.apiKey,
+      apiSecretHash: data.apiSecretHash,
+      status: "active",
+    }).returning();
+    return created;
+  }
+
+  async updateWebsiteApiKeyStatus(id: number, status: string): Promise<WebsiteApiKey> {
+    const [updated] = await db.update(websiteApiKeys).set({ status }).where(eq(websiteApiKeys.id, id)).returning();
+    return updated;
+  }
+
+  async touchWebsiteApiKey(id: number): Promise<void> {
+    await db.update(websiteApiKeys).set({ lastUsedAt: new Date() }).where(eq(websiteApiKeys.id, id));
+  }
+
+  async deleteWebsiteApiKey(id: number): Promise<void> {
+    await db.delete(websiteApiKeys).where(eq(websiteApiKeys.id, id));
+  }
+
+  // ── Marketing: Analytics ─────────────────────────────────────────────────
+
+  async getWebsiteLeadAnalytics(propertyIds?: number[]): Promise<any> {
+    const propFilter = propertyIds && propertyIds.length > 0
+      ? sql`AND property_id = ANY(${propertyIds}::int[])`
+      : sql``;
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterdayStart = new Date(todayStart); yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+    const weekStart = new Date(todayStart); weekStart.setDate(weekStart.getDate() - 6);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const yearStart = new Date(now.getFullYear(), 0, 1);
+
+    const counts = await db.execute(sql`
+      SELECT
+        COUNT(*) FILTER (WHERE created_at >= ${todayStart}) AS today,
+        COUNT(*) FILTER (WHERE created_at >= ${yesterdayStart} AND created_at < ${todayStart}) AS yesterday,
+        COUNT(*) FILTER (WHERE created_at >= ${weekStart}) AS weekly,
+        COUNT(*) FILTER (WHERE created_at >= ${monthStart}) AS monthly,
+        COUNT(*) FILTER (WHERE created_at >= ${yearStart}) AS yearly,
+        COUNT(*) AS total
+      FROM website_leads
+      ${propFilter}
+    `);
+
+    const byStatus = await db.execute(sql`
+      SELECT lead_status, COUNT(*)::int AS count
+      FROM website_leads ${propFilter}
+      GROUP BY lead_status ORDER BY count DESC
+    `);
+
+    const bySource = await db.execute(sql`
+      SELECT COALESCE(utm_source, enquiry_source, 'direct') AS source, COUNT(*)::int AS count
+      FROM website_leads ${propFilter}
+      GROUP BY source ORDER BY count DESC LIMIT 10
+    `);
+
+    const byProperty = await db.execute(sql`
+      SELECT COALESCE(property_name, 'Unknown') AS property, COUNT(*)::int AS count
+      FROM website_leads ${propFilter}
+      GROUP BY property ORDER BY count DESC
+    `);
+
+    const byRoomType = await db.execute(sql`
+      SELECT COALESCE(room_type, 'Not Specified') AS room_type, COUNT(*)::int AS count
+      FROM website_leads ${propFilter}
+      GROUP BY room_type ORDER BY count DESC LIMIT 10
+    `);
+
+    const dailyTrend = await db.execute(sql`
+      SELECT DATE(created_at) AS date, COUNT(*)::int AS count
+      FROM website_leads
+      WHERE created_at >= NOW() - INTERVAL '30 days'
+      ${propFilter}
+      GROUP BY DATE(created_at) ORDER BY date
+    `);
+
+    const row = (counts.rows as any[])[0] || {};
+    return {
+      today: parseInt(row.today || 0),
+      yesterday: parseInt(row.yesterday || 0),
+      weekly: parseInt(row.weekly || 0),
+      monthly: parseInt(row.monthly || 0),
+      yearly: parseInt(row.yearly || 0),
+      total: parseInt(row.total || 0),
+      byStatus: byStatus.rows,
+      bySource: bySource.rows,
+      byProperty: byProperty.rows,
+      byRoomType: byRoomType.rows,
+      dailyTrend: dailyTrend.rows,
+    };
   }
 
   private _mapTransfer(row: any): PropertyTransfer {

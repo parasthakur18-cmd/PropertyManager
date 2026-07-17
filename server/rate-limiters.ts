@@ -54,6 +54,19 @@ export const strictLimiter = rateLimit({
 });
 
 /**
+ * Website API limiter — for the public /api/v1/website-leads endpoint.
+ * 60 requests per 15 minutes per IP.
+ */
+export const websiteApiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: "Too many requests, please try again later." },
+});
+
+/**
  * Public booking engine limiter — applied to unauthenticated booking creation endpoints.
  * Strict per-IP: 20 booking attempts per 15 min window to prevent spam/abuse.
  */

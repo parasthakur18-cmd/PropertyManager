@@ -36025,6 +36025,7 @@ startInventoryHealthJob();
 import express from "express";
 import fs from "fs";
 import path2 from "path";
+import { spawn } from "child_process";
 import { createServer as createViteServer, createLogger } from "vite";
 
 // vite.config.ts
@@ -36081,15 +36082,9 @@ function log(message, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 async function setupVite(app2, server) {
-  if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "setupVite() should not be called in production. Use serveStatic() instead."
-    );
-  }
   const serverOptions = {
     middlewareMode: true,
     hmr: { server },
-    // HMR WebSocket - only for development
     allowedHosts: true
   };
   const vite = await createViteServer({
@@ -36128,37 +36123,89 @@ async function setupVite(app2, server) {
     }
   });
 }
+var buildInProgress = false;
+var buildComplete = false;
+function triggerBackgroundBuild(projectRoot) {
+  if (buildInProgress || buildComplete) return;
+  buildInProgress = true;
+  console.log("[serveStatic] \u{1F528} Starting background build (npm run build)...");
+  const child = spawn("npm", ["run", "build"], {
+    cwd: projectRoot,
+    stdio: "inherit",
+    shell: true
+  });
+  child.on("close", (code) => {
+    if (code === 0) {
+      console.log("[serveStatic] \u2705 Background build complete \u2014 site is ready!");
+      buildComplete = true;
+    } else {
+      console.error(`[serveStatic] \u274C Build failed with exit code ${code}`);
+    }
+    buildInProgress = false;
+  });
+}
+var buildingPage = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta http-equiv="refresh" content="10"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Hostezee \u2014 Starting up\u2026</title>
+  <style>
+    body{margin:0;font-family:system-ui,sans-serif;background:#f0f4f8;display:flex;align-items:center;justify-content:center;min-height:100vh;}
+    .card{background:#fff;border-radius:16px;padding:48px 40px;box-shadow:0 4px 24px rgba(0,0,0,.08);text-align:center;max-width:420px;width:90%;}
+    .logo{font-size:28px;font-weight:700;color:#1E3A5F;margin-bottom:8px;}
+    .tag{color:#2BB6A8;font-size:14px;margin-bottom:32px;}
+    .spinner{width:48px;height:48px;border:5px solid #e8f0fe;border-top:5px solid #2BB6A8;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 24px;}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    h2{color:#1E3A5F;margin:0 0 8px;}
+    p{color:#64748b;font-size:14px;margin:0 0 24px;line-height:1.6;}
+    .note{font-size:12px;color:#94a3b8;}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">Hostezee</div>
+    <div class="tag">Simplify Stays</div>
+    <div class="spinner"></div>
+    <h2>Building the app\u2026</h2>
+    <p>A fresh deployment is being prepared. This takes about 30\u201360 seconds.</p>
+    <p class="note">This page will refresh automatically every 10 seconds.</p>
+  </div>
+</body>
+</html>`;
 function serveStatic(app2) {
   const distPublicPath = path2.resolve(import.meta.dirname, "..", "dist", "public");
   const distClientPath = path2.resolve(import.meta.dirname, "..", "dist", "client");
-  const distPath = fs.existsSync(distPublicPath) ? distPublicPath : fs.existsSync(distClientPath) ? distClientPath : null;
-  if (!distPath) {
-    console.error(`[serveStatic] \u26A0\uFE0F  Build directory not found. Looked for:`);
-    console.error(`  - ${distPublicPath}`);
-    console.error(`  - ${distClientPath}`);
-    console.error(`[serveStatic] Creating fallback response - please run 'npm run build'`);
-    app2.use("*", (_req, res) => {
-      res.status(503).json({
-        error: "Frontend build not found",
-        message: "Please run 'npm run build' to build the frontend",
-        pathsChecked: [distPublicPath, distClientPath]
-      });
-    });
-    return;
+  const projectRoot = path2.resolve(import.meta.dirname, "..");
+  function getDistPath() {
+    if (fs.existsSync(distPublicPath)) return distPublicPath;
+    if (fs.existsSync(distClientPath)) return distClientPath;
+    return null;
   }
-  console.log(`[serveStatic] \u2705 Serving static files from: ${distPath}`);
-  app2.use(express.static(distPath));
+  const initialDistPath = getDistPath();
+  if (!initialDistPath) {
+    console.log("[serveStatic] \u26A0\uFE0F  dist/public not found \u2014 triggering background build\u2026");
+    triggerBackgroundBuild(projectRoot);
+  }
+  app2.use(express.static(distPublicPath));
+  app2.use(express.static(distClientPath));
   app2.use("*", (_req, res) => {
-    const indexPath = path2.resolve(distPath, "index.html");
-    if (fs.existsSync(indexPath)) {
-      res.sendFile(indexPath);
-    } else {
-      res.status(404).json({
-        error: "index.html not found",
-        message: "Frontend build is incomplete. Please run 'npm run build'",
-        path: indexPath
-      });
+    const distPath = getDistPath();
+    if (distPath) {
+      const indexPath = path2.resolve(distPath, "index.html");
+      if (fs.existsSync(indexPath)) {
+        return res.sendFile(indexPath);
+      }
     }
+    if (!buildComplete) {
+      triggerBackgroundBuild(projectRoot);
+      return res.status(503).set("Content-Type", "text/html").send(buildingPage);
+    }
+    return res.status(503).json({
+      error: "Build completed but index.html still missing",
+      message: "Please restart the server: pm2 restart propertymanager"
+    });
   });
 }
 

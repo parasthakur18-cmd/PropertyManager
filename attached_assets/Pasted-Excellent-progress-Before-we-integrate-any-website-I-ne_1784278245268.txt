@@ -1,0 +1,128 @@
+Excellent progress. Before we integrate any website, I need to verify that the Website Lead API is production-ready.
+
+Please do not make any more feature changes.
+
+Instead, provide the following deliverables.
+
+1. API Endpoint
+
+Provide the complete production endpoint.
+
+Example:
+
+POST https://hostezee.in/api/v1/website-leads
+2. Authentication
+
+Tell me exactly how the API is authenticated.
+
+Examples:
+
+Bearer Token
+API Key
+Header Name
+
+Example:
+
+Authorization: Bearer xxxxxxxxx
+
+or
+
+x-api-key: xxxxxxxxx
+3. API Documentation
+
+List every accepted field.
+
+Example:
+
+{
+  "property_name": "",
+  "website": "",
+  "guest_name": "",
+  "mobile_number": "",
+  "email": "",
+  "check_in": "",
+  "check_out": "",
+  "adults": 2,
+  "children": 0,
+  "room_type": "",
+  "landing_page": "",
+  "referrer": "",
+  "utm_source": "",
+  "utm_medium": "",
+  "utm_campaign": "",
+  "device_type": "",
+  "browser": ""
+}
+
+Specify:
+
+Required fields
+Optional fields
+Validation rules
+4. Sample Success Response
+
+Example:
+
+{
+  "success": true,
+  "lead_id": "...",
+  "message": "Lead created successfully"
+}
+5. Sample Error Responses
+
+Return every possible error.
+
+Examples:
+
+Invalid API Key
+Missing Required Field
+Validation Error
+Rate Limit Exceeded
+Internal Server Error
+6. API Key
+
+Generate one API Key for:
+
+The Woodpecker Inn
+
+This will be used by the website.
+
+7. API Test
+
+Test the endpoint yourself.
+
+Create one test lead using the API.
+
+Confirm it appears inside:
+
+Marketing → Website Leads
+
+Include:
+
+Request sent
+Response received
+Screenshot or confirmation that the lead exists in the dashboard
+8. API Management
+
+Confirm that API Keys can later be generated for:
+
+The Forest Pinnacle
+The Blue Mont Sojha
+Future hotel websites
+
+without changing backend code.
+
+9. Backward Compatibility
+
+Confirm that no existing Hostezee PMS functionality has been modified or broken.
+
+10. Final Integration Package
+
+Once complete, give me:
+
+API URL
+API Key
+Required Headers
+Complete JSON Request
+Complete JSON Response
+API Documentation

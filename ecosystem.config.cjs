@@ -1,10 +1,3 @@
-// Production: sab values .env.production se aayengi (app direct wahi file use karta hai)
-const path = require('path');
-process.env.NODE_ENV = process.env.NODE_ENV || 'production';
-try {
-  require('dotenv').config({ path: path.join(__dirname, '.env.production') });
-} catch (_) {}
-
 module.exports = {
   apps: [{
     name: 'propertymanager',
@@ -14,7 +7,40 @@ module.exports = {
     env: {
       NODE_ENV: 'production',
       PORT: '3000',
-      // Baaki sab .env.production me – wahi edit karo, phir: pm2 restart propertymanager
+      REPLIT_DOMAINS: 'hostezee.in',
+      DATABASE_URL: 'postgresql://myappuser:StrongPassword321@localhost:5432/myappdb',
+      SESSION_SECRET: 'hostezee-session-secret-2024-secure',
+      RAZORPAY_KEY_ID: 'rzp_live_RkGgLu6G2vIeKr',
+      RAZORPAY_KEY_SECRET: 'j4dZ0f7280WUNOvIjODSHCWB',
+      RAZORPAY_WEBHOOK_SECRET: 'Forest@123321',
+      AUTHKEY_API_KEY: '6c094eed3cd9b928',
+      AUTHKEY_WHATSAPP_NUMBER: '919317124562',
+      AUTHKEY_WA_TEMPLATE_ID: '18491',
+      AUTHKEY_WA_FOOD_ORDER_RECEIVED: '28983',
+      AUTHKEY_WA_FOOD_ORDER_STAFF_ALERT: '33130',
+      AUTHKEY_WA_TASK_REMINDER: 'disabled',
+      AUTHKEY_WA_BOOKING_CONFIRMATION: 'disabled',
+      AUTHKEY_WA_PAYMENT_CONFIRMATION: 'disabled',
+      AUTHKEY_WA_CHECKOUT_DETAILS: '18667',
+      AUTHKEY_WA_PREBILL: 'disabled',
+      AUTHKEY_WA_PREBILL_LINK: '30849',
+      AUTHKEY_WA_PENDING_PAYMENT: '18649',
+      AUTHKEY_WA_ENQUIRY_CONFIRMATION: '18491',
+      AUTHKEY_WA_WELCOME_MENU: '21932',
+      AUTHKEY_WA_ADVANCE_PAYMENT: '22226',
+      AUTHKEY_WA_ADVANCE_CONFIRMATION: '18649',
+      AUTHKEY_WA_PAYMENT_REMINDER: '18489',
+      AUTHKEY_WA_SELF_CHECKIN: '22462',
+      AUTHKEY_WA_CUSTOM: '19856',
+      AUTHKEY_WA_SPLIT_PAYMENT: '30424',
+      AUTHKEY_WA_OTA_BOOKING: '28770',
+      VAPID_PUBLIC_KEY: 'BLdCY7sP4ahKOguoQje1mbZ17a7gIaIjJLpWE787dJ3cMAXk5vi7k6FFaAEM9HeVXLQTKnm-7GyBfRZnrJnU06M',
+      VAPID_PRIVATE_KEY: 'RonARmY8ZxP6_5wvxQrOGuxOCBi5leb92jaKrMOAo1Y',
+      VAPID_SUBJECT: 'mailto:admin@hostezee.com',
+      GOOGLE_CLIENT_ID: '911079886676-6pefghc3dtg3jrmu8dbb7si41u6lj6gk.apps.googleusercontent.com',
+      GOOGLE_CLIENT_SECRET: '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',
+      DEFAULT_OBJECT_STORAGE_BUCKET_ID: 'replit-objstore-dadf9949-2217-4c0b-a3b4-c84c1a6f6bff',
+      PUBLIC_OBJECT_SEARCH_PATHS: '/replit-objstore-dadf9949-2217-4c0b-a3b4-c84c1a6f6bff/public',
     },
     error_file: './logs/pm2-error.log',
     out_file: './logs/pm2-out.log',

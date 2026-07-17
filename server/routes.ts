@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { strictLimiter, publicBookingLimiter } from "./rate-limiters";
+import { strictLimiter, publicBookingLimiter, websiteApiLimiter } from "./rate-limiters";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { randomUUID } from "crypto";
 import bcryptjs from "bcryptjs";
@@ -26737,6 +26737,298 @@ Respond ONLY with valid JSON (no markdown, no extra text):
 
   // Start direct booking hold expiry cron (expires pending_payment holds every 5 min)
   startHoldExpiryCron();
+
+  // ── Marketing Module: Website Leads API ───────────────────────────────────
+
+  // PUBLIC: POST /api/v1/website-leads — accepts leads from hotel websites via API key
+  app.post("/api/v1/website-leads", websiteApiLimiter, async (req: any, res) => {
+    try {
+      const authHeader = req.headers.authorization || "";
+      const apiKey = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim();
+      if (!apiKey) return res.status(401).json({ success: false, message: "Missing API key. Use: Authorization: Bearer <api_key>" });
+
+      const keyRecord = await storage.getWebsiteApiKeyByKey(apiKey);
+      if (!keyRecord || keyRecord.status !== "active") return res.status(401).json({ success: false, message: "Invalid or inactive API key" });
+
+      const {
+        property_name, website, guest_name, mobile_number, email,
+        check_in, check_out, adults, children, room_type,
+        landing_page, referrer, utm_source, utm_medium, utm_campaign,
+        device_type, browser, operating_system,
+      } = req.body;
+
+      if (!guest_name) return res.status(400).json({ success: false, message: "guest_name is required" });
+      if (!mobile_number) return res.status(400).json({ success: false, message: "mobile_number is required" });
+
+      // Sanitize inputs
+      const sanitize = (v: any) => (typeof v === "string" ? v.replace(/<[^>]*>/g, "").trim() : v);
+
+      const checkInDate = check_in ? new Date(check_in).toISOString().split("T")[0] : null;
+      const checkOutDate = check_out ? new Date(check_out).toISOString().split("T")[0] : null;
+      let totalNights = null;
+      if (checkInDate && checkOutDate) {
+        const diff = (new Date(checkOutDate).getTime() - new Date(checkInDate).getTime()) / 86400000;
+        if (diff > 0) totalNights = Math.round(diff);
+      }
+
+      const propName = sanitize(property_name) || keyRecord.propertyName;
+
+      // Duplicate detection by mobile + property
+      const existing = await storage.findWebsiteLeadByMobile(sanitize(mobile_number), propName);
+      if (existing) {
+        await storage.updateWebsiteLead(existing.id, {
+          lastEnquiry: new Date() as any,
+          enquiryCount: ((existing.enquiryCount || 1) + 1) as any,
+        } as any);
+        await storage.addLeadHistory({
+          leadId: existing.id,
+          action: "duplicate_enquiry",
+          oldValue: `count:${existing.enquiryCount}`,
+          newValue: `count:${(existing.enquiryCount || 1) + 1}`,
+          changedBy: "api",
+        });
+        await storage.touchWebsiteApiKey(keyRecord.id);
+        return res.status(200).json({ success: true, lead_id: existing.id, message: "Duplicate enquiry recorded — existing lead updated" });
+      }
+
+      const lead = await storage.createWebsiteLead({
+        propertyId: keyRecord.propertyId || null,
+        propertyName: propName,
+        website: sanitize(website),
+        guestName: sanitize(guest_name),
+        mobileNumber: sanitize(mobile_number),
+        email: sanitize(email),
+        adults: parseInt(adults) || 1,
+        children: parseInt(children) || 0,
+        roomType: sanitize(room_type),
+        checkIn: checkInDate as any,
+        checkOut: checkOutDate as any,
+        totalNights,
+        enquirySource: "website",
+        landingPage: sanitize(landing_page),
+        referrer: sanitize(referrer),
+        utmSource: sanitize(utm_source),
+        utmMedium: sanitize(utm_medium),
+        utmCampaign: sanitize(utm_campaign),
+        deviceType: sanitize(device_type),
+        browser: sanitize(browser),
+        operatingSystem: sanitize(operating_system),
+        leadStatus: "new",
+      });
+
+      await storage.addLeadHistory({ leadId: lead.id, action: "lead_created", newValue: `From website: ${propName}`, changedBy: "api" });
+      await storage.touchWebsiteApiKey(keyRecord.id);
+
+      // In-app notification to admins
+      try {
+        const admins = await storage.getAllUsers();
+        const adminUsers = admins.filter(u => u.role === "admin" || u.role === "super-admin");
+        for (const admin of adminUsers.slice(0, 10)) {
+          await db.insert(notifications).values({
+            userId: admin.id,
+            type: "website_lead",
+            title: "New Website Enquiry",
+            message: `${sanitize(guest_name)} enquired for ${propName}${room_type ? ` — ${room_type}` : ""}`,
+            relatedId: 0,
+            relatedType: "website_lead",
+          });
+        }
+      } catch (_) {}
+
+      return res.status(201).json({ success: true, lead_id: lead.id, message: "Lead created successfully" });
+    } catch (e: any) {
+      console.error("[WEBSITE-LEADS-API]", e.message);
+      return res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  });
+
+  // Protected: GET /api/website-leads — list with pagination + filters
+  app.get("/api/website-leads", isAuthenticated, async (req: any, res) => {
+    try {
+      const { currentUser, tenant } = await getAuthenticatedTenant(req);
+      const isAdmin = currentUser.role === "admin" || currentUser.role === "super-admin" || currentUser.role === "manager";
+      const limit = Math.min(parseInt(String(req.query.limit || 50)), 200);
+      const offset = Math.max(parseInt(String(req.query.offset || 0)), 0);
+      const result = await storage.getWebsiteLeadsPaginated({
+        limit, offset,
+        search: req.query.search as string,
+        propertyId: req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined,
+        status: req.query.status as string,
+        dateFrom: req.query.dateFrom as string,
+        dateTo: req.query.dateTo as string,
+        roomType: req.query.roomType as string,
+        assignedTo: req.query.assignedTo as string,
+        source: req.query.source as string,
+        propertyIds: isAdmin ? undefined : tenant.assignedPropertyIds,
+      });
+      return res.json(result);
+    } catch (e: any) {
+      return res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Protected: GET /api/website-leads/:id
+  app.get("/api/website-leads/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const lead = await storage.getWebsiteLead(req.params.id);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+      const history = await storage.getLeadHistory(req.params.id);
+      return res.json({ ...lead, history });
+    } catch (e: any) {
+      return res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Protected: PATCH /api/website-leads/:id
+  app.patch("/api/website-leads/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { currentUser } = await getAuthenticatedTenant(req);
+      const existing = await storage.getWebsiteLead(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Lead not found" });
+
+      const { leadStatus, assignedTo, remarks, ...rest } = req.body;
+      const updates: any = {};
+      const historyEntries: { action: string; oldValue: string; newValue: string }[] = [];
+      const userName = `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim() || currentUser.email || "User";
+
+      if (leadStatus && leadStatus !== existing.leadStatus) {
+        updates.leadStatus = leadStatus;
+        historyEntries.push({ action: "status_changed", oldValue: existing.leadStatus, newValue: leadStatus });
+      }
+      if (assignedTo !== undefined && assignedTo !== existing.assignedTo) {
+        updates.assignedTo = assignedTo;
+        historyEntries.push({ action: "assigned_changed", oldValue: existing.assignedTo || "", newValue: assignedTo });
+      }
+      if (remarks !== undefined) {
+        updates.remarks = remarks;
+        historyEntries.push({ action: "note_added", newValue: remarks });
+      }
+
+      const updated = await storage.updateWebsiteLead(req.params.id, updates);
+      for (const h of historyEntries) {
+        await storage.addLeadHistory({ leadId: req.params.id, action: h.action, oldValue: h.oldValue || null, newValue: h.newValue, changedBy: userName });
+      }
+      return res.json(updated);
+    } catch (e: any) {
+      return res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Protected: DELETE /api/website-leads/:id
+  app.delete("/api/website-leads/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { currentUser } = await getAuthenticatedTenant(req);
+      if (currentUser.role !== "admin" && currentUser.role !== "super-admin") return res.status(403).json({ message: "Admin only" });
+      await storage.deleteWebsiteLead(req.params.id);
+      return res.json({ success: true });
+    } catch (e: any) {
+      return res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Protected: POST /api/website-leads/:id/notes — add internal note
+  app.post("/api/website-leads/:id/notes", isAuthenticated, async (req: any, res) => {
+    try {
+      const { currentUser } = await getAuthenticatedTenant(req);
+      const lead = await storage.getWebsiteLead(req.params.id);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+      const { note } = req.body;
+      if (!note) return res.status(400).json({ message: "note is required" });
+      const userName = `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim() || currentUser.email || "User";
+      const entry = await storage.addLeadHistory({ leadId: req.params.id, action: "note_added", newValue: note, changedBy: userName });
+      return res.status(201).json(entry);
+    } catch (e: any) {
+      return res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Protected: GET /api/website-leads/analytics/summary
+  app.get("/api/website-leads/analytics/summary", isAuthenticated, async (req: any, res) => {
+    try {
+      const { currentUser, tenant } = await getAuthenticatedTenant(req);
+      const isAdmin = currentUser.role === "admin" || currentUser.role === "super-admin" || currentUser.role === "manager";
+      const analytics = await storage.getWebsiteLeadAnalytics(isAdmin ? undefined : tenant.assignedPropertyIds);
+      return res.json(analytics);
+    } catch (e: any) {
+      return res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Protected: GET /api/website-api-keys
+  app.get("/api/website-api-keys", isAuthenticated, async (req: any, res) => {
+    try {
+      const { currentUser } = await getAuthenticatedTenant(req);
+      if (currentUser.role !== "admin" && currentUser.role !== "super-admin") return res.status(403).json({ message: "Admin only" });
+      const keys = await storage.getAllWebsiteApiKeys();
+      // Never expose the hash — mask it
+      return res.json(keys.map(k => ({ ...k, apiSecretHash: undefined })));
+    } catch (e: any) {
+      return res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Protected: POST /api/website-api-keys — generate new API key
+  app.post("/api/website-api-keys", isAuthenticated, async (req: any, res) => {
+    try {
+      const { currentUser } = await getAuthenticatedTenant(req);
+      if (currentUser.role !== "admin" && currentUser.role !== "super-admin") return res.status(403).json({ message: "Admin only" });
+      const { propertyName, propertyId } = req.body;
+      if (!propertyName) return res.status(400).json({ message: "propertyName is required" });
+
+      const rawKey = `hzk_${randomUUID().replace(/-/g, "")}`;
+      const rawSecret = randomUUID().replace(/-/g, "");
+      const secretHash = await bcryptjs.hash(rawSecret, 10);
+
+      const key = await storage.createWebsiteApiKey({
+        propertyName,
+        propertyId: propertyId ? parseInt(propertyId) : undefined,
+        apiKey: rawKey,
+        apiSecretHash: secretHash,
+      });
+      // Return the raw secret only once — cannot be recovered later
+      return res.status(201).json({ ...key, apiSecretHash: undefined, apiSecret: rawSecret, _note: "Save the apiSecret now — it will not be shown again." });
+    } catch (e: any) {
+      return res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Protected: PATCH /api/website-api-keys/:id/revoke
+  app.patch("/api/website-api-keys/:id/revoke", isAuthenticated, async (req: any, res) => {
+    try {
+      const { currentUser } = await getAuthenticatedTenant(req);
+      if (currentUser.role !== "admin" && currentUser.role !== "super-admin") return res.status(403).json({ message: "Admin only" });
+      const updated = await storage.updateWebsiteApiKeyStatus(parseInt(req.params.id), "revoked");
+      return res.json({ ...updated, apiSecretHash: undefined });
+    } catch (e: any) {
+      return res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Protected: PATCH /api/website-api-keys/:id/activate
+  app.patch("/api/website-api-keys/:id/activate", isAuthenticated, async (req: any, res) => {
+    try {
+      const { currentUser } = await getAuthenticatedTenant(req);
+      if (currentUser.role !== "admin" && currentUser.role !== "super-admin") return res.status(403).json({ message: "Admin only" });
+      const updated = await storage.updateWebsiteApiKeyStatus(parseInt(req.params.id), "active");
+      return res.json({ ...updated, apiSecretHash: undefined });
+    } catch (e: any) {
+      return res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Protected: DELETE /api/website-api-keys/:id
+  app.delete("/api/website-api-keys/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { currentUser } = await getAuthenticatedTenant(req);
+      if (currentUser.role !== "admin" && currentUser.role !== "super-admin") return res.status(403).json({ message: "Admin only" });
+      await storage.deleteWebsiteApiKey(parseInt(req.params.id));
+      return res.json({ success: true });
+    } catch (e: any) {
+      return res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ── End Marketing Module ──────────────────────────────────────────────────
 
   const httpServer = createServer(app);
   return httpServer;

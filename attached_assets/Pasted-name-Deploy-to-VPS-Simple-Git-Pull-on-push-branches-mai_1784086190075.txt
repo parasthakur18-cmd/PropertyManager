@@ -1,0 +1,83 @@
+name: Deploy to VPS (Simple - Git Pull)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -e
+            
+            echo "🚀 Starting deployment..."
+            
+            # Navigate to app directory
+            cd /var/www/myapp
+            
+            # Pull latest code
+            echo " Pulling latest code from GitHub..."
+            git fetch origin
+            git reset --hard origin/main
+            
+            # Clean and rebuild
+            echo " Building application..."
+            rm -rf dist
+            # Try npm ci first (faster), fallback to npm install if lock file is out of sync
+            npm ci || npm install
+            
+            # Build frontend and backend
+            echo "Building application (frontend + backend)..."
+            npm run build || {
+              echo "Build failed!"
+              exit 1
+            }
+            
+            # Verify build output exists
+            echo "Verifying build output..."
+            if [ ! -d "dist/public" ]; then
+              echo "ERROR: dist/public directory not found!"
+              ls -la dist/ 2>/dev/null || echo "dist directory doesn't exist"
+              exit 1
+            fi
+            
+            if [ ! -f "dist/public/index.html" ]; then
+              echo "ERROR: dist/public/index.html not found!"
+              ls -la dist/public/ 2>/dev/null || echo "dist/public directory is empty"
+              exit 1
+            fi
+            
+            if [ ! -f "dist/index.js" ]; then
+              echo "ERROR: dist/index.js (backend) not found!"
+              exit 1
+            fi
+            
+            echo "Build verification passed"
+            
+            # Restart PM2
+            echo " Restarting PM2..."
+            pm2 restart propertymanager --update-env || pm2 start ecosystem.config.cjs
+            
+            # Wait for app to start
+            sleep 3
+            
+            # Check status
+            echo "Recent PM2 Status:"
+            pm2 status
+            
+            # Show recent logs
+            echo " Recent logs:"
+            pm2 logs propertymanager --lines 10 --nostream || true
+            
+            echo " Deployment complete!"
