@@ -1700,12 +1700,16 @@ async function createMarketingTables(): Promise<void> {
 
   await runRaw(`CREATE INDEX IF NOT EXISTS idx_website_api_keys_key ON website_api_keys (api_key)`);
 
+  // Make api_secret_hash nullable on existing tables (production may have created it NOT NULL)
+  await runRaw(`ALTER TABLE website_api_keys ALTER COLUMN api_secret_hash DROP NOT NULL`).catch(() => {});
+
   const client = await pool.connect();
   try {
+    // UPSERT: insert the key if missing, or force it active if it exists (even if revoked)
     await client.query(
       `INSERT INTO website_api_keys (property_name, api_key, api_secret_hash, status)
        VALUES ($1, $2, $3, 'active')
-       ON CONFLICT (api_key) DO NOTHING`,
+       ON CONFLICT (api_key) DO UPDATE SET status = 'active', property_name = EXCLUDED.property_name`,
       ['The Woodpecker Inn', 'hzk_1a5cb5ab3bf787f8816fd196b2bc921b3033b31c', 'seeded']
     );
     console.log('[MARKETING] Marketing tables ready, API key seeded for The Woodpecker Inn');
