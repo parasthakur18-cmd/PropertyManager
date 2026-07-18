@@ -26194,7 +26194,8 @@ Respond ONLY with valid JSON (no markdown, no extra text):
         ],
       };
 
-      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const internalPort = process.env.PORT || "5000";
+      const baseUrl = `http://127.0.0.1:${internalPort}`;
       const webhookResponse = await fetch(`${baseUrl}/api/aiosell/reservation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
