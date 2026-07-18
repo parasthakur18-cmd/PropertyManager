@@ -1463,6 +1463,12 @@ export async function runStartupMigrations(): Promise<void> {
   } catch (err: any) {
     console.warn(`[SEED] ota_commission_rules: ${err.message}`);
   }
+
+  try {
+    await createMarketingTables();
+  } catch (err: any) {
+    console.warn(`[MIGRATE] marketing_tables: ${err.message}`);
+  }
 }
 
 async function addOwnerBiPhase11Tables(): Promise<void> {
@@ -1620,6 +1626,89 @@ async function seedWhatsappAlertConfigs(): Promise<void> {
       );
     }
     console.log(`[WA-SEED] WhatsApp alert configs seeded (${DEFAULT_WA_ALERT_CONFIGS.length} templates)`);
+  } finally {
+    client.release();
+  }
+}
+
+async function createMarketingTables(): Promise<void> {
+  await runRaw(`CREATE TABLE IF NOT EXISTS website_leads (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    property_name VARCHAR(255) NOT NULL,
+    property_id INTEGER,
+    website VARCHAR(500),
+    guest_name VARCHAR(255) NOT NULL,
+    mobile_number VARCHAR(20) NOT NULL,
+    email VARCHAR(255),
+    adults INTEGER DEFAULT 1,
+    children INTEGER DEFAULT 0,
+    room_type VARCHAR(255),
+    check_in DATE,
+    check_out DATE,
+    message TEXT,
+    landing_page VARCHAR(500),
+    referrer VARCHAR(500),
+    utm_source VARCHAR(100),
+    utm_medium VARCHAR(100),
+    utm_campaign VARCHAR(100),
+    utm_term VARCHAR(100),
+    utm_content VARCHAR(100),
+    device_type VARCHAR(50),
+    browser VARCHAR(100),
+    ip_address VARCHAR(45),
+    country VARCHAR(100),
+    city VARCHAR(100),
+    lead_status VARCHAR(50) DEFAULT 'new',
+    assigned_to INTEGER,
+    internal_notes TEXT,
+    enquiry_count INTEGER DEFAULT 1,
+    last_enquiry_at TIMESTAMP DEFAULT NOW(),
+    converted_booking_id INTEGER,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+  )`);
+
+  await runRaw(`CREATE INDEX IF NOT EXISTS idx_website_leads_property ON website_leads (property_name)`);
+  await runRaw(`CREATE INDEX IF NOT EXISTS idx_website_leads_mobile ON website_leads (mobile_number)`);
+  await runRaw(`CREATE INDEX IF NOT EXISTS idx_website_leads_status ON website_leads (lead_status)`);
+  await runRaw(`CREATE INDEX IF NOT EXISTS idx_website_leads_created ON website_leads (created_at DESC)`);
+
+  await runRaw(`CREATE TABLE IF NOT EXISTS website_lead_history (
+    id SERIAL PRIMARY KEY,
+    lead_id UUID NOT NULL REFERENCES website_leads(id) ON DELETE CASCADE,
+    action VARCHAR(100) NOT NULL,
+    old_value TEXT,
+    new_value TEXT,
+    changed_by INTEGER,
+    changed_by_name VARCHAR(255),
+    note TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+  )`);
+
+  await runRaw(`CREATE INDEX IF NOT EXISTS idx_website_lead_history_lead ON website_lead_history (lead_id)`);
+
+  await runRaw(`CREATE TABLE IF NOT EXISTS website_api_keys (
+    id SERIAL PRIMARY KEY,
+    property_name VARCHAR(255) NOT NULL,
+    property_id INTEGER,
+    api_key VARCHAR(128) NOT NULL UNIQUE,
+    api_secret_hash VARCHAR(255),
+    status VARCHAR(20) DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_used_at TIMESTAMP
+  )`);
+
+  await runRaw(`CREATE INDEX IF NOT EXISTS idx_website_api_keys_key ON website_api_keys (api_key)`);
+
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `INSERT INTO website_api_keys (property_name, api_key, api_secret_hash, status)
+       VALUES ($1, $2, $3, 'active')
+       ON CONFLICT (api_key) DO NOTHING`,
+      ['The Woodpecker Inn', 'hzk_1a5cb5ab3bf787f8816fd196b2bc921b3033b31c', 'seeded']
+    );
+    console.log('[MARKETING] Marketing tables ready, API key seeded for The Woodpecker Inn');
   } finally {
     client.release();
   }
